@@ -98,11 +98,6 @@ LIBRARY_FLAGS += \
 	-framework CoreMIDI
 endif
 
-ifeq ($(HOST_OS),Linux)
-LIBRARY_FLAGS += \
-	-Wl,-z,defs
-endif
-
 ################################################################################
 # Targets for Building
 ################################################################################
