@@ -87,7 +87,7 @@ ifeq ($(HOST_OS),Linux)
     LIBS = asound
 endif
 ifeq ($(HOST_OS),Darwin)
-    LIBS = pulse
+    LIBS =
 endif
 
 # These are directories to look for library files in
