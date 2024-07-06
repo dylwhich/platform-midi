@@ -138,7 +138,7 @@ void print_midi_packet(unsigned char *packet, unsigned int size)
 
         case 0xC0: // Program Select
         {
-            printf("%c%02hhx %02hhx     Program Select Chan %2hhd  Program %hhu\n", RSC, status, data[0], (status & 0x0F) + 1);
+            printf("%c%02hhx %02hhx     Program Select Chan %2hhd  Program %hhu\n", RSC, status, data[0], (status & 0x0F) + 1, data[0]);
             break;
         }
 
