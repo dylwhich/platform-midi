@@ -78,7 +78,7 @@ jobs:
       run: |
         printf "Commit: https://github.com/dylwhich/platform-midi/commit/$(git rev-parse HEAD) \nBuilt at: $(date)" >> version.txt
 
-- name: Install packages
+    - name: Install packages
       run: |
         apt-get install libasound2-dev
 
