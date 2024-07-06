@@ -86,7 +86,7 @@ void CALLBACK platform_midi_winmm_callback(HMIDIIN midiIn, UINT wMsg, DWORD_PTR 
 int platform_midi_init_winmm(const char* name)
 {
     // Pass pointer to phmi, as this function sets it to a new handle
-    MMRESULT result = midiInOpen(&phmi, 0, platform_midi_winmm_callback, NULL, CALLBACK_FUNCTION);
+    MMRESULT result = midiInOpen(&phmi, 0, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)NULL, CALLBACK_FUNCTION);
     printf("midiInOpen() == %d\n", result);
     printf("midiInStart() == %d\n", midiInStart(phmi));
     return 0;
