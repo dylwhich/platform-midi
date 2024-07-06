@@ -53,7 +53,8 @@ INC = $(patsubst %, -I%, $(INC_DIRS) )
 ################################################################################
 
 # These are flags for the compiler, all files
-CFLAGS =
+CFLAGS = \
+	-c
 
 ################################################################################
 # Defines
@@ -114,12 +115,15 @@ all: examples
 
 examples: $(EXAMPLES)
 
+./examples/%.o: ./examples/%.c
+	$(CC) $(CFLAGS) $(DEFINES) $(INC) $< -o $@
+
 # This compiles each example into an executable
-./examples/%: ./examples/%.c
-	$(CC) $(CFLAGS) $(DEFINES) $(INC) $(LIBRARY_FLAGS) $< -o $@
+./examples/%: ./examples/%.o
+	$(CC) $(LIBRARY_FLAGS) $< -o $@
 
 clean:
-	-@rm -f $(OBJECTS) $(EXAMPLES)
+	-@rm -f ./examples/*.o $(EXAMPLES)
 
 # This cleans everything
 fullclean: clean
