@@ -55,13 +55,6 @@ INC = $(patsubst %, -I%, $(INC_DIRS) )
 # These are flags for the compiler, all files
 CFLAGS =
 
-ifeq ($(HOST_OS),Darwin)
-# Required for OpenGL and some other libraries
-# TODO is this needed
-CFLAGS += \
-	-I/opt/homebrew/include
-endif
-
 ################################################################################
 # Defines
 ################################################################################
@@ -92,11 +85,6 @@ endif
 
 # These are directories to look for library files in
 LIB_DIRS =
-
-# TODO is this necessary?
-ifeq ($(HOST_OS),Darwin)
-    LIB_DIRS = /opt/homebrew/lib
-endif
 
 # This combines the flags for the linker to find and use libraries
 LIBRARY_FLAGS = $(patsubst %, -L%, $(LIB_DIRS)) $(patsubst %, -l%, $(LIBS))
