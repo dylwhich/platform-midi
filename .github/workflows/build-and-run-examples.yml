@@ -1,0 +1,83 @@
+name: Build Examples
+run-name: ${{ github.actor }} is building platform-midi
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  Build-Windows:
+    runs-on: windows-latest
+    steps:
+
+    # - name: Debug print event
+    #   run: echo '${{ toJSON(github.event) }}'
+
+    - name: Check out repository code
+      uses: actions/checkout@v4.1.4
+      with:
+        submodules: recursive
+
+    - name: Create a version file
+      run: |
+        printf "Commit: https://github.com/dylwhich/platform-midi/commit/$(git rev-parse HEAD) \nBuilt at: $(date)" >> version.txt
+
+    - name: Install msys64 packages
+      run: |
+        C:\msys64\usr\bin\bash -lc 'pacman --noconfirm -S base-devel gcc gdb zip'
+
+    - name: Compile Examples
+      run: |
+        $env:path = $env:path.Insert($env:path.ToLower().IndexOf("c:\windows\system32"), "C:\msys64\mingw64\bin;C:\msys64\usr\bin;")
+        make -j2 examples
+
+  Build-OSX-arm:
+    runs-on: macos-latest
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4.1.4
+      with:
+        submodules: recursive
+
+    - name: Create a version file
+      run: |
+        printf "Commit: https://github.com/dylwhich/platform-midi/commit/$(git rev-parse HEAD) \nBuilt at: $(date)" >> version.txt
+
+    - name: Compile Examples
+      run: |
+        make -j3 examples
+
+  Build-OSX-intel:
+    runs-on: macos-13
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4.1.4
+      with:
+        submodules: recursive
+
+    - name: Create a version file
+      run: |
+        printf "Commit: https://github.com/dylwhich/platform-midi/commit/$(git rev-parse HEAD) \nBuilt at: $(date)" >> version.txt
+
+    - name: Compile Examples
+      run: |
+        make -j4 examples
+
+  Build-Linux:
+    runs-on: ubuntu-lates
+    steps:
+    - name: Check out repository code
+      uses: actions/checkout@v4.1.4
+      with:
+        submodules: recursive
+
+    - name: Create a version file
+      run: |
+        printf "Commit: https://github.com/dylwhich/platform-midi/commit/$(git rev-parse HEAD) \nBuilt at: $(date)" >> version.txt
+
+    - name: Compile Examples
+      run: |
+        make -j4 examples
