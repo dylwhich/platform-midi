@@ -67,7 +67,7 @@ jobs:
         make -j4 examples
 
   Build-Linux:
-    runs-on: ubuntu-lates
+    runs-on: ubuntu-latest
     steps:
     - name: Check out repository code
       uses: actions/checkout@v4.1.4
