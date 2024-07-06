@@ -20,7 +20,8 @@ int platform_midi_write_winmm(unsigned char* buf, int size);
 #include <BaseTsd.h>
 #include <mmeapi.h>
 
-LPHMIDIIN phmi;
+// Anywhere that accepts LPHMIDIIN just wants a pointer to this
+HMIDIIN phmi;
 
 void CALLBACK platform_midi_winmm_callback(HMIDIIN midiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
 {
@@ -84,6 +85,7 @@ void CALLBACK platform_midi_winmm_callback(HMIDIIN midiIn, UINT wMsg, DWORD_PTR 
 
 int platform_midi_init_winmm(const char* name)
 {
+    // Pass pointer to phmi, as this function sets it to a new handle
     MMRESULT result = midiInOpen(&phmi, 0, platform_midi_winmm_callback, NULL, CALLBACK_FUNCTION);
     printf("midiInOpen() == %d\n", result);
     printf("midiInStart() == %d\n", midiInStart(phmi));
@@ -93,7 +95,7 @@ int platform_midi_init_winmm(const char* name)
 void platform_midi_deinit_winmm(void)
 {
     printf("midiInStop() == %d\n", midiInStop(phmi));
-    MMRESULT result = midiInClose(&phmi);
+    MMRESULT result = midiInClose(phmi);
     phmi = 0;
     printf("platform_midi_deinit_winmm() result: %d\n", result);
 }
