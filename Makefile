@@ -115,7 +115,7 @@ examples: $(EXAMPLES)
 
 # This compiles each example into an executable
 ./examples/%: ./examples/%.o
-	$(CC) $(LIBRARY_FLAGS) $< -o $@
+	$(CC) -o $@ $< $(LIBRARY_FLAGS)
 
 clean:
 	-@rm -f ./examples/*.o $(EXAMPLES)
