@@ -56,10 +56,10 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     }
 
     struct platform_midi_coremidi_driver *driver = (struct platform_midi_coremidi_driver*)alloc;
-    coremidi_driver->deinitFn = platform_midi_deinit_coremidi;
-    coremidi_driver->availFn = platform_midi_avail_coremidi;
-    coremidi_driver->readFn = platform_midi_read_coremidi;
-    coremidi_driver->writeFn = platform_midi_write_coremidi;
+    driver->deinitFn = platform_midi_deinit_coremidi;
+    driver->availFn = platform_midi_avail_coremidi;
+    driver->readFn = platform_midi_read_coremidi;
+    driver->writeFn = platform_midi_write_coremidi;
     driver->data = data;
 
     /* name: The client name */
@@ -83,7 +83,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     };
 
     result = MIDIInputPortCreateWithProtocol(
-        &driver->coremidi_client,
+        driver->coremidi_client,
         CFStringCreateWithCStringNoCopy(0, "listen:in", kCFStringEncodingUTF8, kCFAllocatorNull),
         kMIDIProtocol_1_0,
         &driver->coremidi_in_port,
@@ -94,7 +94,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     {
         printf("Failed to create CoreMIDI input port\n");
 
-        MIDIClientDispose(&driver->coremidi_client);
+        MIDIClientDispose(driver->coremidi_client);
         return 0;
     }
 
