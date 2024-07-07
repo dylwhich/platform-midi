@@ -3,29 +3,37 @@
 
 #include <alsa/asoundlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-int platform_midi_init_alsa(const char* name);
-void platform_midi_deinit_alsa(void);
-int platform_midi_read_alsa(unsigned char * out, int size);
-int platform_midi_avail_alsa(void);
-int platform_midi_write_alsa(unsigned char* buf, int size);
-
-#define PLATFORM_MIDI_INIT(name) platform_midi_init_alsa(name)
-#define PLATFORM_MIDI_DEINIT() platform_midi_deinit_alsa()
-#define PLATFORM_MIDI_READ(out, size) platform_midi_read_alsa(out, size)
-#define PLATFORM_MIDI_AVAIL() platform_midi_avail_alsa()
-#define PLATFORM_MIDI_WRITE(buf, size) platform_midi_write_alsa(buf, size)
+struct platform_midi_driver *platform_midi_init_alsa(const char *name, void *data);
+void platform_midi_deinit_alsa(struct platform_midi_driver *driver);
+int platform_midi_read_alsa(struct platform_midi_driver *driver, unsigned char *out, int size);
+int platform_midi_avail_alsa(struct platform_midi_driver *driver);
+int platform_midi_write_alsa(struct platform_midi_driver *driver, const unsigned char *buf, int size);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
 
-snd_seq_t *seq_handle;
-snd_midi_event_t *event_parser;
-int in_port;
-int out_port;
-int alsa_init = 0;
-
-int platform_midi_init_alsa(const char* name)
+struct platform_midi_alsa_driver
 {
+    platform_midi_deinit_fn deinitFn;
+    platform_midi_avail_fn availFn;
+    platform_midi_read_fn readFn;
+    platform_midi_write_fn writeFn;
+    void *data;
+
+    snd_seq_t *seq_handle;
+    snd_midi_event_t *event_parser;
+    int in_port;
+    int out_port;
+};
+
+struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *data)
+{
+    snd_seq_t *seq_handle;
+    snd_midi_event_t *event_parser;
+    int in_port = 0;
+    int out_port = 0;
+
     if (0 != snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_DUPLEX, SND_SEQ_NONBLOCK))
     {
         // Error!
@@ -55,40 +63,52 @@ int platform_midi_init_alsa(const char* name)
         printf("Failed to create MIDI parser\n");
     }
 
-    printf("Done initializing MIDI!\n");
+    void* alloc = malloc(sizeof(struct platform_midi_alsa_driver));
 
-    alsa_init = 1;
-    return 1;
-}
-
-void platform_midi_deinit_alsa(void)
-{
-    if (alsa_init)
+    if (!alloc)
     {
-        snd_midi_event_free(event_parser);
-        event_parser = 0;
-
-        snd_seq_delete_port(seq_handle, in_port);
-        in_port = 0;
-
-        snd_seq_close(seq_handle);
-        seq_handle = 0;
-
-        alsa_init = 0;
+        printf("Failed to allocate driver struct\n");
+        return 0;
     }
+
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)alloc;
+    alsa_driver->deinitFn = platform_midi_deinit_alsa;
+    alsa_driver->availFn = platform_midi_avail_alsa;
+    alsa_driver->readFn = platform_midi_read_alsa;
+    alsa_driver->writeFn = platform_midi_write_alsa;
+    alsa_driver->data = data;
+
+    alsa_driver->seq_handle = seq_handle;
+    alsa_driver->event_parser = event_parser;
+    alsa_driver->in_port = in_port;
+    alsa_driver->out_port = out_port;
+
+    printf("Done initializing MIDI!\n");
+    return (struct platform_midi_driver*)alsa_driver;
 }
 
-int platform_midi_read_alsa(unsigned char * out, int size)
+void platform_midi_deinit_alsa(struct platform_midi_driver* driver)
 {
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+
+    snd_midi_event_free(alsa_driver->event_parser);
+    snd_seq_delete_port(alsa_driver->seq_handle, alsa_driver->in_port);
+    snd_seq_close(alsa_driver->seq_handle);
+    free(alsa_driver);
+}
+
+int platform_midi_read_alsa(struct platform_midi_driver* driver, unsigned char * out, int size)
+{
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
     snd_seq_event_t *ev = NULL;
 
-    int result = snd_seq_event_input(seq_handle, &ev);
+    int result = snd_seq_event_input(alsa_driver->seq_handle, &ev);
     if (result == -EAGAIN)
     {
         return 0;
     }
 
-    long convertResult = snd_midi_event_decode(event_parser, out, size, ev);
+    long convertResult = snd_midi_event_decode(alsa_driver->event_parser, out, size, ev);
     if (convertResult < 0)
     {
         printf("Err: couldn't convert ALSA event to MIDI: %ld\n", convertResult);
@@ -100,19 +120,22 @@ int platform_midi_read_alsa(unsigned char * out, int size)
     }
 }
 
-int platform_midi_avail_alsa(void)
+int platform_midi_avail_alsa(struct platform_midi_driver* driver)
 {
-    return snd_seq_event_input_pending(seq_handle, 1);
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+    return snd_seq_event_input_pending(alsa_driver->seq_handle, 1);
 }
 
-int platform_midi_write_alsa(unsigned char* buf, int size)
+int platform_midi_write_alsa(struct platform_midi_driver* driver, const unsigned char* buf, int size)
 {
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+
     snd_seq_event_t ev;
     int total = 0;
 
     do
     {
-        int result = snd_midi_event_encode(event_parser, buf + total, size - total, &ev);
+        int result = snd_midi_event_encode(alsa_driver->event_parser, buf + total, size - total, &ev);
 
         if (result < 0)
         {
@@ -122,7 +145,7 @@ int platform_midi_write_alsa(unsigned char* buf, int size)
         total += result;
     } while (total < size);
 
-    if (0 >= snd_seq_event_output(seq_handle, &ev))
+    if (0 >= snd_seq_event_output(alsa_driver->seq_handle, &ev))
     {
         printf("Error sending event\n");
         return -1;

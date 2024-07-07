@@ -1,24 +1,33 @@
 #ifndef _PLATFORM_MIDI_H_
 #define _PLATFORM_MIDI_H_
 
-#define PLATFORM_MIDI_SUPPORTED 1
+struct platform_midi_driver;
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+typedef struct platform_midi_driver* (*platform_midi_init_fn)(const char *, void*);
+typedef void  (*platform_midi_deinit_fn)(struct platform_midi_driver*);
+typedef int   (*platform_midi_read_fn)(struct platform_midi_driver*, unsigned char*, int);
+typedef int   (*platform_midi_write_fn)(struct platform_midi_driver*, const unsigned char*, int);
+typedef int   (*platform_midi_avail_fn)(struct platform_midi_driver*);
+
+struct platform_midi_driver* platform_midi_init(const char *name);
+void platform_midi_deinit(struct platform_midi_driver *driver);
+int platform_midi_read(struct platform_midi_driver *driver, unsigned char *out, int size);
+int platform_midi_avail(struct platform_midi_driver *driver);
+int platform_midi_write(struct platform_midi_driver *driver, const unsigned char *buf, int size);
 
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__LINUX__)
-#ifdef PLATFORM_MIDI_RAWMIDI
 #define PLATFORM_MIDI_ALSA_RAWMIDI 1
-#else
 #define PLATFORM_MIDI_ALSA 1
-#endif
-#define PLATFORM_MIDI_BUFFERED 0
 #elif defined(__APPLE__)
 #define PLATFORM_MIDI_COREMIDI 1
-#define PLATFORM_MIDI_BUFFERED 1
 #else
 #define PLATFORM_MIDI_WINMM 1
-#define PLATFORM_MIDI_BUFFERED 1
 #endif
 
-#if PLATFORM_MIDI_BUFFERED
 #ifndef PLATFORM_MIDI_EVENT_BUFFER_ITEMS
 #define PLATFORM_MIDI_EVENT_BUFFER_ITEMS 32
 #endif
@@ -28,6 +37,7 @@
 #endif
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,41 +46,45 @@ struct platform_midi_packet_info
     unsigned int offset;
     unsigned int length;
 };
-unsigned char *platform_midi_buffer;
-struct platform_midi_packet_info platform_midi_packets[PLATFORM_MIDI_EVENT_BUFFER_ITEMS];
-unsigned int platform_midi_packet_read_pos;
-unsigned int platform_midi_packet_write_pos;
-unsigned int platform_midi_buffer_offset;
-unsigned int platform_midi_buffer_end;
 
-#define platform_midi_buffer_empty() (platform_midi_packet_read_pos == platform_midi_packet_write_pos)
-
-static void platform_midi_push_packet(unsigned char *data, unsigned int length)
+struct platform_midi_ringbuf
 {
-    if ((platform_midi_packet_write_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS == platform_midi_packet_read_pos)
+    unsigned char buffer[PLATFORM_MIDI_EVENT_BUFFER_SIZE];
+    struct platform_midi_packet_info packets[PLATFORM_MIDI_EVENT_BUFFER_ITEMS];
+    unsigned int read_pos;
+    unsigned int write_pos;
+    unsigned int buffer_offset;
+    unsigned int buffer_end;
+};
+
+#define platform_midi_buffer_empty(buf) (buf->read_pos == buf->write_pos)
+
+static void platform_midi_push_packet(struct platform_midi_ringbuf *buf, unsigned char *data, unsigned int length)
+{
+    if ((buf->write_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS == buf->read_pos)
     {
         printf("Warn: MIDI packet buffer is full, dropping an event\n");
         // The buffer is full... gotta drop a packet
-        platform_midi_buffer_offset = (platform_midi_buffer_offset + platform_midi_packets[platform_midi_packet_read_pos].length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
-        platform_midi_packet_read_pos = (platform_midi_packet_read_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
+        buf->buffer_offset = (buf->buffer_offset + buf->packets[buf->read_pos].length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
+        buf->read_pos = (buf->read_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
     }
 
-    platform_midi_packets[platform_midi_packet_write_pos].offset = platform_midi_buffer_end;
-    platform_midi_packets[platform_midi_packet_write_pos].length = length;
+    buf->packets[buf->write_pos].offset = buf->buffer_end;
+    buf->packets[buf->write_pos].length = length;
 
-    if (platform_midi_buffer_end + length <= PLATFORM_MIDI_EVENT_BUFFER_SIZE)
+    if (buf->buffer_end + length <= PLATFORM_MIDI_EVENT_BUFFER_SIZE)
     {
-        memcpy(&platform_midi_buffer[platform_midi_buffer_end], data, length);
+        memcpy(&buf->buffer[buf->buffer_end], data, length);
     }
     else
     {
-        unsigned int startLen = PLATFORM_MIDI_EVENT_BUFFER_SIZE - platform_midi_buffer_end;
-        memcpy(&platform_midi_buffer[platform_midi_buffer_end], data, startLen);
-        memcpy(platform_midi_buffer, data + startLen, length - startLen);
+        unsigned int startLen = PLATFORM_MIDI_EVENT_BUFFER_SIZE - buf->buffer_end;
+        memcpy(&buf->buffer[buf->buffer_end], data, startLen);
+        memcpy(buf->buffer, data + startLen, length - startLen);
     }
 
-    platform_midi_buffer_end = (platform_midi_buffer_end + length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
-    platform_midi_packet_write_pos = (platform_midi_packet_write_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
+    buf->buffer_end = (buf->buffer_end + length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
+    buf->write_pos = (buf->write_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
 }
 
 static int platform_midi_convert_ump(unsigned char *out, unsigned int maxlen, const unsigned int *umpWords, unsigned int wordCount)
@@ -167,30 +181,30 @@ static int platform_midi_convert_ump(unsigned char *out, unsigned int maxlen, co
     return written;
 }
 
-static int platform_midi_packet_count(void)
+static int platform_midi_packet_count(struct platform_midi_ringbuf *buf)
 {
-    if (platform_midi_packet_read_pos == platform_midi_packet_write_pos)
+    if (buf->read_pos == buf->write_pos)
     {
         return 0;
     }
-    else if (platform_midi_packet_read_pos < platform_midi_packet_write_pos)
+    else if (buf->read_pos < buf->write_pos)
     {
-        return platform_midi_packet_write_pos - platform_midi_packet_read_pos;
+        return buf->write_pos - buf->read_pos;
     }
     else
     {
-        return PLATFORM_MIDI_EVENT_BUFFER_ITEMS - platform_midi_packet_read_pos - platform_midi_packet_write_pos;
+        return PLATFORM_MIDI_EVENT_BUFFER_ITEMS - buf->read_pos - buf->write_pos;
     }
 }
 
-static int platform_midi_pop_packet(unsigned char *out, unsigned int size)
+static int platform_midi_pop_packet(struct platform_midi_ringbuf *buf, unsigned char *out, unsigned int size)
 {
-    if (platform_midi_packet_read_pos == platform_midi_packet_write_pos)
+    if (buf->read_pos == buf->write_pos)
     {
         return 0;
     }
 
-    struct platform_midi_packet_info *packet = &platform_midi_packets[platform_midi_packet_read_pos];
+    struct platform_midi_packet_info *packet = &buf->packets[buf->read_pos];
     int toCopy = (size < packet->length) ? size : packet->length;
 
     // TODO detect large events overrunning the buffer
@@ -201,60 +215,147 @@ static int platform_midi_pop_packet(unsigned char *out, unsigned int size)
         int endCopy = (packet->offset + toCopy <= PLATFORM_MIDI_EVENT_BUFFER_SIZE) ? toCopy : PLATFORM_MIDI_EVENT_BUFFER_SIZE - packet->offset;
         int startCopy = packet->length - endCopy;
 
-        memcpy(out, &platform_midi_buffer[packet->offset], endCopy);
-        memcpy(out + endCopy, platform_midi_buffer, startCopy);
+        memcpy(out, &buf->buffer[packet->offset], endCopy);
+        memcpy(out + endCopy, buf->buffer, startCopy);
     }
     else
     {
-        memcpy(out, &platform_midi_buffer[packet->offset], toCopy);
+        memcpy(out, &buf->buffer[packet->offset], toCopy);
     }
 
-    platform_midi_buffer_offset = (platform_midi_buffer_offset + packet->length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
-    platform_midi_packet_read_pos = (platform_midi_packet_read_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
+    buf->buffer_offset = (buf->buffer_offset + packet->length) % PLATFORM_MIDI_EVENT_BUFFER_SIZE;
+    buf->read_pos = (buf->read_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
 
     return toCopy;
 }
 
-static int platform_midi_buffer_init(void)
+static int platform_midi_buffer_init(struct platform_midi_ringbuf *buf)
 {
-    platform_midi_packet_read_pos = 0;
-    platform_midi_packet_write_pos = 0;
-    platform_midi_buffer_offset = 0;
-    platform_midi_buffer_end = 0;
-
-    platform_midi_buffer = malloc(PLATFORM_MIDI_EVENT_BUFFER_SIZE);
-
-    if (!platform_midi_buffer)
-    {
-        printf("Failed to allocate memory for Platform MIDI event buffer\n");
-        return 0;
-    }
+    buf->read_pos = 0;
+    buf->write_pos = 0;
+    buf->buffer_offset = 0;
+    buf->buffer_end = 0;
+    memset(buf->buffer, 0, PLATFORM_MIDI_EVENT_BUFFER_SIZE);
 
     return 1;
 }
 
-static void platform_midi_buffer_deinit(void)
+static void platform_midi_buffer_deinit(struct platform_midi_ringbuf *buf)
 {
-    free(platform_midi_buffer);
-    platform_midi_buffer = 0;
+    platform_midi_buffer_init(buf);
 }
-#endif
+
+struct platform_midi_driver
+{
+    platform_midi_deinit_fn deinitFn;
+    platform_midi_avail_fn availFn;
+    platform_midi_read_fn readFn;
+    platform_midi_write_fn writeFn;
+    void *data;
+};
 #endif
 
+//#define PLATFORM_MIDI_DRIVER_NULL { 1, "NULL", platform_midi_init_null }
+//#include "platform_midi_null.h"
+#define PLATFORM_MIDI_DRIVER_NULL { 0, 0, 0 }
+
 #ifdef PLATFORM_MIDI_ALSA
+#define PLATFORM_MIDI_DRIVER_ALSA { 2, "ALSA-Sequencer", platform_midi_init_alsa }
 #include "platform_midi_alsa.h"
+#else
+#define PLATFORM_MIDI_DRIVER_ALSA { 0, 0, 0 }
 #endif
 
 #ifdef PLATFORM_MIDI_ALSA_RAWMIDI
+#define PLATFORM_MIDI_DRIVER_ALSA_RAWMIDI { 1, "ALSA-RawMIDI", platform_midi_init_alsa_rawmidi }
 #include "platform_midi_alsa_rawmidi.h"
+#else
+#define PLATFORM_MIDI_DRIVER_ALSA_RAWMIDI { 0, 0, 0 }
 #endif
 
 #ifdef PLATFORM_MIDI_COREMIDI
+#define PLATFORM_MIDI_DRIVER_COREMIDI { 2, "CoreMIDI", platform_midi_init_coremidi }
 #include "platform_midi_coremidi.h"
+#else
+#define PLATFORM_MIDI_DRIVER_COREMIDI { 0, 0, 0 }
 #endif
 
 #ifdef PLATFORM_MIDI_WINMM
+#define PLATFORM_MIDI_DRIVER_WINMM { 2, "WinMM", platform_midi_init_winmm }
 #include "platform_midi_winmm.h"
+#else
+#define PLATFORM_MIDI_DRIVER_WINMM { 0, 0, 0 }
+#endif
+
+#ifdef PLATFORM_MIDI_JACK
+#define PLATFORM_MIDI_DRIVER_JACK { 3, "JACK", platform_midi_init_jack }
+#include "platform_midi_jack.h"
+#else
+#define PLATFORM_MIDI_DRIVER_JACK { 0, 0, 0 }
+#endif
+
+struct platform_midi_driver_def
+{
+    int priority;
+    const char *name;
+    platform_midi_init_fn initFn;
+};
+
+static const struct platform_midi_driver_def PLATFORM_MIDI_DRIVERS[] = {
+    PLATFORM_MIDI_DRIVER_NULL,
+    PLATFORM_MIDI_DRIVER_ALSA,
+    PLATFORM_MIDI_DRIVER_ALSA_RAWMIDI,
+    PLATFORM_MIDI_DRIVER_COREMIDI,
+    PLATFORM_MIDI_DRIVER_WINMM,
+    PLATFORM_MIDI_DRIVER_JACK,
+};
+
+struct platform_midi_driver* platform_midi_init(const char* name)
+{
+    const struct platform_midi_driver_def *driver = &PLATFORM_MIDI_DRIVERS[0];
+
+    for (int i = 0; i < sizeof(PLATFORM_MIDI_DRIVERS) / sizeof(PLATFORM_MIDI_DRIVERS[0]); i++)
+    {
+        if (PLATFORM_MIDI_DRIVERS[i].priority > driver->priority && PLATFORM_MIDI_DRIVERS[i].initFn)
+        {
+            driver = &PLATFORM_MIDI_DRIVERS[i];
+        }
+    }
+
+    if (!driver->initFn)
+    {
+        printf("ERR: No suitable MIDI backends found.\n");
+        return NULL;
+    }
+
+    return driver->initFn(name, NULL);
+}
+
+void platform_midi_deinit(struct platform_midi_driver* driver)
+{
+    if (driver && driver->deinitFn)
+    {
+        driver->deinitFn(driver);
+    }
+}
+
+int platform_midi_read(struct platform_midi_driver* driver, unsigned char * out, int size)
+{
+    return driver->readFn(driver, out, size);
+}
+
+int platform_midi_avail(struct platform_midi_driver* driver)
+{
+    return driver->availFn(driver);
+}
+
+int platform_midi_write(struct platform_midi_driver* driver, const unsigned char* buf, int size)
+{
+    return driver->writeFn(driver, buf, size);
+}
+
+#ifdef __cplusplus
+};
 #endif
 
 #endif

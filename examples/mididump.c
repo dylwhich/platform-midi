@@ -266,6 +266,7 @@ int main(int argc, char** argv)
     int read = 0;
     int limit = 0;
     int packets = 0;
+    struct platform_midi_driver *driver = NULL;
 
     if (argc > 1)
     {
@@ -279,7 +280,7 @@ int main(int argc, char** argv)
 	printf("Reading %d MIDI packets...\n", limit);
     }
 
-    if (!PLATFORM_MIDI_INIT("mididump"))
+    if (!(driver = platform_midi_init("mididump")))
     {
 	printf("Initialization failed!\n");
 	return 1;
@@ -287,9 +288,9 @@ int main(int argc, char** argv)
 
     while (1)
     {
-        while (PLATFORM_MIDI_AVAIL())
+        while (platform_midi_avail(driver))
         {
-            read = PLATFORM_MIDI_READ(packet, sizeof(packet));
+            read = platform_midi_read(driver, packet, sizeof(packet));
             if (read > 0)
             {
                 print_midi_packet(packet, read);
@@ -308,6 +309,6 @@ int main(int argc, char** argv)
         }
     }
 
-    PLATFORM_MIDI_DEINIT();
+    platform_midi_deinit(driver);
     return 0;
 }

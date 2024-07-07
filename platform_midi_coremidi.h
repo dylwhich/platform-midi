@@ -1,20 +1,14 @@
 #ifndef _PLATFORM_MIDI_COREMIDI_H_
 #define _PLATFORM_MIDI_COREMIDI_H_
 
-int platform_midi_init_coremidi(const char* name);
-void platform_midi_deinit_coremidi(void);
-int platform_midi_read_coremidi(unsigned char * out, int size);
-int platform_midi_avail_coremidi(void);
-int platform_midi_write_coremidi(unsigned char* buf, int size);
-
-// TODO don't do it like this
-#define PLATFORM_MIDI_INIT(name) platform_midi_init_coremidi(name)
-#define PLATFORM_MIDI_DEINIT() platform_midi_deinit_coremidi()
-#define PLATFORM_MIDI_READ(out, size) platform_midi_read_coremidi(out, size)
-#define PLATFORM_MIDI_AVAIL() platform_midi_avail_coremidi()
-#define PLATFORM_MIDI_WRITE(buf, size) platform_midi_write_coremidi(buf, size)
+struct platform_midi_driver *platform_midi_init_coremidi(const char *name, void *data);
+void platform_midi_deinit_coremidi(struct platform_midi_driver *driver);
+int platform_midi_read_coremidi(struct platform_midi_driver *driver, unsigned char *out, int size);
+int platform_midi_avail_coremidi(struct platform_midi_driver *driver);
+int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsigned char *buf, int size);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
+
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -24,61 +18,75 @@ int platform_midi_write_coremidi(unsigned char* buf, int size);
 #include <CoreFoundation/CFString.h>
 #include <CoreMIDI/CoreMIDI.h>
 
-#ifndef PLATFORM_MIDI_EVENT_BUFFER_ITEMS
-#define PLATFORM_MIDI_EVENT_BUFFER_ITEMS 32
-#endif
+struct platform_midi_coremidi_driver
+{
+    platform_midi_deinit_fn deinitFn;
+    platform_midi_avail_fn availFn;
+    platform_midi_read_fn readFn;
+    platform_midi_write_fn writeFn;
+    void *data;
 
-#ifndef PLATFORM_MIDI_EVENT_BUFFER_SIZE
-#define PLATFORM_MIDI_EVENT_BUFFER_SIZE 1024
-#endif
-
-MIDIClientRef coremidi_client;
-MIDIPortRef coremidi_in_port;
+    struct platform_midi_ringbuf buffer;
+    MIDIClientRef coremidi_client;
+    MIDIPortRef coremidi_in_port;
+    MIDIPortRef coremidi_out_port;
+};
 
 void platform_midi_receive_callback(const MIDIEventList* events, void* refcon)
 {
+    struct platform_midi_coremidi_driver *driver = (struct platform_midi_coremidi_driver*)refcon;
     printf("Recieved %u MIDI packets from CoreAudio\n", events->numPackets);
 
     for (unsigned int i = 0; i < events->numPackets; i++)
     {
         unsigned char data[16];
         int written = platform_midi_convert_ump(data, sizeof(data), events->packet[i].words, events->packet[i].wordCount);
-        platform_midi_push_packet(data, written);
+        platform_midi_push_packet(&driver->buffer, data, written);
     }
 }
 
-int platform_midi_init_coremidi(const char* name)
+struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void *data)
 {
+    void *alloc = malloc(sizeof(struct platform_midi_coremidi_driver));
+
+    if (!alloc)
+    {
+        printf("Failed to allocate driver struct\n");
+        return NULL;
+    }
+
+    struct platform_midi_coremidi_driver *driver = (struct platform_midi_coremidi_driver*)alloc;
+    coremidi_driver->deinitFn = platform_midi_deinit_coremidi;
+    coremidi_driver->availFn = platform_midi_avail_coremidi;
+    coremidi_driver->readFn = platform_midi_read_coremidi;
+    coremidi_driver->writeFn = platform_midi_write_coremidi;
+    driver->data = data;
+
     /* name: The client name */
     /* notifyProc: an optional callback for system changes */
     /* notifyRefCon: a nullable refCon for notifyRefCon*/
     CFStringRef nameCf = CFStringCreateWithCString(NULL, name, kCFStringEncodingUTF8);
-    OSStatus result = MIDIClientCreate(nameCf, NULL, NULL, &coremidi_client);
+    // Pass the driver as a void* for the callback
+    OSStatus result = MIDIClientCreate(nameCf, NULL, driver, &driver->coremidi_client);
 
     if (0 != result)
     {
         printf("Failed to initialize CoreMIDI driver\n");
+        free(alloc);
         return 0;
     }
 
-    if (!platform_midi_buffer_init())
-    {
-        printf("Failed to allocate memory for event buffer in CoreMIDI driver\n");
-        MIDIClientDispose(coremidi_client);
-        coremidi_client = 0;
-
-        return 0;
-    }
+    platform_midi_buffer_init(&driver->buffer);
 
     void (^receiveCbBlock)(const MIDIEventList* events, void* refcon) = ^void(const MIDIEventList* events, void *refcon) {
         platform_midi_receive_callback(events, refcon);
     };
 
     result = MIDIInputPortCreateWithProtocol(
-        coremidi_client,
+        &driver->coremidi_client,
         CFStringCreateWithCStringNoCopy(0, "listen:in", kCFStringEncodingUTF8, kCFAllocatorNull),
         kMIDIProtocol_1_0,
-        &coremidi_in_port,
+        &driver->coremidi_in_port,
         receiveCbBlock
     );
 
@@ -86,49 +94,48 @@ int platform_midi_init_coremidi(const char* name)
     {
         printf("Failed to create CoreMIDI input port\n");
 
-        platform_midi_buffer_deinit();
-
-        MIDIClientDispose(coremidi_client);
-        coremidi_client = 0;
+        MIDIClientDispose(&driver->coremidi_client);
         return 0;
     }
 
-    return 1;
+    return (struct platform_midi_driver*)driver;
 }
 
-void platform_midi_deinit_coremidi(void)
+void platform_midi_deinit_coremidi(struct platform_midi_driver *driver)
 {
-    OSStatus result = MIDIPortDispose(coremidi_in_port);
-    coremidi_in_port = 0;
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
+    OSStatus result = MIDIPortDispose(coremidi_driver->coremidi_in_port);
 
     if (0 != result)
     {
         printf("failed to destroy CoreMIDI input port\n");
     }
 
-    platform_midi_buffer_deinit();
-
-    result = MIDIClientDispose(coremidi_client);
-    coremidi_client = 0;
+    result = MIDIClientDispose(coremidi_driver->coremidi_client);
 
     if (0 != result)
     {
         printf("Failed to deinitialize CoreMIDI driver\n");
     }
+
+    free(coremidi_driver);
 }
 
-int platform_midi_read_coremidi(unsigned char * out, int size)
+int platform_midi_read_coremidi(struct platform_midi_driver *driver, unsigned char * out, int size)
 {
-    return platform_midi_pop_packet(out, size);
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
+    return platform_midi_pop_packet(&coremidi_driver->buffer, out, size);
 }
 
-int platform_midi_avail_coremidi(void)
+int platform_midi_avail_coremidi(struct platform_midi_driver *driver)
 {
-    return platform_midi_packet_count();
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
+    return platform_midi_packet_count(&coremidi_driver->buffer);
 }
 
-int platform_midi_write_coremidi(unsigned char* buf, int size)
+int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsigned char* buf, int size)
 {
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
     printf("platform_midi_write_coremidi() not implemented\n");
     return 0;
 }
