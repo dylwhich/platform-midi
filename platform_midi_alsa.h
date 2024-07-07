@@ -21,11 +21,12 @@ int platform_midi_write_alsa(unsigned char* buf, int size);
 snd_seq_t *seq_handle;
 snd_midi_event_t *event_parser;
 int in_port;
+int out_port;
 int alsa_init = 0;
 
 int platform_midi_init_alsa(const char* name)
 {
-    if (0 != snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_INPUT, SND_SEQ_NONBLOCK))
+    if (0 != snd_seq_open(&seq_handle, "default", SND_SEQ_OPEN_DUPLEX, SND_SEQ_NONBLOCK))
     {
         // Error!
         printf("Failed to initialize ALSA driver\n");
@@ -44,6 +45,10 @@ int platform_midi_init_alsa(const char* name)
     in_port = snd_seq_create_simple_port(seq_handle, "listen:in",
                       SND_SEQ_PORT_CAP_WRITE|SND_SEQ_PORT_CAP_SUBS_WRITE,
                       SND_SEQ_PORT_TYPE_APPLICATION);
+
+    out_port = snd_seq_create_simple_port(seq_handle, "output",
+                                          SND_SEQ_PORT_CAP_READ|SND_SEQ_PORT_CAP_SUBS_WRITE,
+                                          SND_SEQ_PORT_TYPE_APPLICATION|SND_SEQ_PORT_TYPE_PORT|SND_SEQ_PORT_TYPE_SOFTWARE);
 
     if (0 != snd_midi_event_new(64, &event_parser))
     {
@@ -102,8 +107,28 @@ int platform_midi_avail_alsa(void)
 
 int platform_midi_write_alsa(unsigned char* buf, int size)
 {
-    // NYI
-    return 0;
+    snd_seq_event_t ev;
+    int total = 0;
+
+    do
+    {
+        int result = snd_midi_event_encode(event_parser, buf + total, size - total, &ev);
+
+        if (result < 0)
+        {
+            return result;
+        }
+
+        total += result;
+    } while (total < size);
+
+    if (0 >= snd_seq_event_output(seq_handle, &ev))
+    {
+        printf("Error sending event\n");
+        return -1;
+    }
+
+    return total;
 }
 #endif
 
