@@ -50,7 +50,7 @@ jobs:
     - name: Compile Examples
       run: |
         make -j3 examples
-	./examples/loopback
+        ./examples/loopback
 
   Build-OSX-intel:
     runs-on: macos-13
@@ -67,7 +67,7 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
-	./examples/loopback
+        ./examples/loopback
 
   Build-Linux:
     runs-on: ubuntu-latest
@@ -88,4 +88,4 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
-	./examples/loopback
+        ./examples/loopback
