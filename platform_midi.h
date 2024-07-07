@@ -27,16 +27,15 @@
 #define PLATFORM_MIDI_EVENT_BUFFER_SIZE 1024
 #endif
 
+#ifdef PLATFORM_MIDI_IMPLEMENTATION
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 struct platform_midi_packet_info
 {
     unsigned int offset;
     unsigned int length;
 };
-
-#ifdef PLATFORM_MIDI_IMPLEMENTATION
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 unsigned char *platform_midi_buffer;
 struct platform_midi_packet_info platform_midi_packets[PLATFORM_MIDI_EVENT_BUFFER_ITEMS];
 unsigned int platform_midi_packet_read_pos;
