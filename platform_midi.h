@@ -4,7 +4,11 @@
 #define PLATFORM_MIDI_SUPPORTED 1
 
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__LINUX__)
+#ifdef PLATFORM_MIDI_RAWMIDI
+#define PLATFORM_MIDI_ALSA_RAWMIDI 1
+#else
 #define PLATFORM_MIDI_ALSA 1
+#endif
 #define PLATFORM_MIDI_BUFFERED 0
 #elif defined(__APPLE__)
 #define PLATFORM_MIDI_COREMIDI 1
@@ -240,6 +244,10 @@ static void platform_midi_buffer_deinit(void)
 
 #ifdef PLATFORM_MIDI_ALSA
 #include "platform_midi_alsa.h"
+#endif
+
+#ifdef PLATFORM_MIDI_ALSA_RAWMIDI
+#include "platform_midi_alsa_rawmidi.h"
 #endif
 
 #ifdef PLATFORM_MIDI_COREMIDI
