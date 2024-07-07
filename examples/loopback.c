@@ -31,6 +31,12 @@ int main(int argc, char** argv)
 
     struct platform_midi_driver *driver = platform_midi_init("mididump");
 
+    if (!driver)
+    {
+        printf("ERROR! Could not initialize platform_midi\n");
+        return 1;
+    }
+
     for (packets = 0; packets < 10; packets++)
     {
         packet[0] = (packets % 2) ? 0x80 : 0x90;
