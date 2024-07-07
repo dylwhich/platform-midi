@@ -259,11 +259,31 @@ void print_midi_packet(unsigned char *packet, unsigned int size)
     }
 }
 
-int main()
+int main(int argc, char** argv)
 {
     unsigned char packet[16];
+    char* end;
     int read = 0;
-    PLATFORM_MIDI_INIT("mididump");
+    int limit = 0;
+    int packets = 0;
+
+    if (argc > 1)
+    {
+        limit = strtol(argv[1], &end, 10);
+        if (end == argv[1])
+        {
+            printf("Invalid arg for limit: %s\n", argv[1]);
+            return 1;
+        }
+
+	printf("Reading %d MIDI packets...\n", limit);
+    }
+
+    if (!PLATFORM_MIDI_INIT("mididump"))
+    {
+	printf("Initialization failed!\n");
+	return 1;
+    }
 
     while (1)
     {
@@ -273,12 +293,18 @@ int main()
             if (read > 0)
             {
                 print_midi_packet(packet, read);
+                packets++;
             }
-        else if (read < 0)
-        {
-        printf("Error reading: %d\n", read);
-        break;
-        }
+            else if (read < 0)
+            {
+                printf("Error reading: %d\n", read);
+                break;
+            }
+
+            if (limit != 0 && packets > limit)
+            {
+                break;
+            }
         }
     }
 
