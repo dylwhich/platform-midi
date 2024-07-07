@@ -91,7 +91,7 @@ static int platform_midi_convert_ump(unsigned char *out, unsigned int maxlen, co
 {
     unsigned int written = 0;
     unsigned char type  = (umpWords[0] & 0xF0000000) >> 28;
-    unsigned char group = (umpWords[0] & 0x0F000000) >> 24;
+    //unsigned char group = (umpWords[0] & 0x0F000000) >> 24;
 
     switch (type)
     {
