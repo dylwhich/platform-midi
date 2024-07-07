@@ -27,7 +27,7 @@ struct platform_midi_winmm_driver
 
     // Anywhere that accepts LPHMIDIIN just wants a pointer to this
     HMIDIIN phmi;
-}
+};
 
 void CALLBACK platform_midi_winmm_callback(HMIDIIN midiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
 {
@@ -109,7 +109,7 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
     winmm_driver->data = data;
 
     // Pass pointer to phmi, as this function sets it to a new handle
-    MMRESULT result = midiInOpen(&winmm_driver->phmi, 0, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)driver, CALLBACK_FUNCTION);
+    MMRESULT result = midiInOpen(&winmm_driver->phmi, 0, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)winmm_driver, CALLBACK_FUNCTION);
     printf("midiInOpen() == %d\n", result);
     printf("midiInStart() == %d\n", midiInStart(winmm_driver->phmi));
 
@@ -120,7 +120,7 @@ void platform_midi_deinit_winmm(struct platform_midi_driver *driver)
 {
     struct platform_midi_winmm_driver *winmm_driver = (struct platform_midi_winmm_driver*)driver;
     printf("midiInStop() == %d\n", midiInStop(winmm_driver->phmi));
-    MMRESULT result = midiInClose(driver->phmi);
+    MMRESULT result = midiInClose(winmm_driver->phmi);
     printf("platform_midi_deinit_winmm() result: %d\n", result);
     free(winmm_driver);
 }
