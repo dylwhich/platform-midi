@@ -90,6 +90,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
 
     result = MIDIDestinationCreateWithProtocol(
         driver->coremidi_client,
+        CFSTR("input"),
         kMIDIProtocol_1_0,
         &driver->in_endpoint,
         receiveCbBlock
@@ -106,7 +107,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
 
     result = MIDIOutputPortCreate(
         driver->coremidi_client,
-        CFSTR("default"),
+        CFSTR("output"),
         &driver->coremidi_out_port
     );
 
