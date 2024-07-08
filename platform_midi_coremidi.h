@@ -122,6 +122,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
 
     result = MIDISourceCreateWithProtocol(
         driver->coremidi_client,
+        nameCf,
         kMIDIProtocol_1_0,
         &driver->out_endpoint
     );
@@ -195,7 +196,7 @@ int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsi
     MIDIEventPacket *packet = MIDIEventListInit(&list, kMIDIProtocol_1_0);
     packet->wordCount = platform_midi_convert_to_ump(packet->words, 64, buf, size);
 
-    OSStatus result = MIDISendEventList(coremidi_driver->coremidi_out_port, coremidi_driver->out_enpdoint, &list);
+    OSStatus result = MIDISendEventList(coremidi_driver->coremidi_out_port, coremidi_driver->out_endpoint, &list);
 
     if (0 != result)
     {

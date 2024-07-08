@@ -181,7 +181,7 @@ static int platform_midi_convert_from_ump(unsigned char *out, unsigned int maxle
     return written;
 }
 
-static int platform_midi_convert_to_ump(unsigned int *out, unsigned int maxWords, unsigned char *data, unsigned int dataLen)
+static int platform_midi_convert_to_ump(unsigned int *out, unsigned int maxWords, const unsigned char *data, unsigned int dataLen)
 {
     unsigned int *ump = out;
     unsigned int read = 0;
