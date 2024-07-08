@@ -87,7 +87,7 @@ static void platform_midi_push_packet(struct platform_midi_ringbuf *buf, unsigne
     buf->write_pos = (buf->write_pos + 1) % PLATFORM_MIDI_EVENT_BUFFER_ITEMS;
 }
 
-static int platform_midi_convert_ump(unsigned char *out, unsigned int maxlen, const unsigned int *umpWords, unsigned int wordCount)
+static int platform_midi_convert_from_ump(unsigned char *out, unsigned int maxlen, const unsigned int *umpWords, unsigned int wordCount)
 {
     unsigned int written = 0;
     unsigned char type  = (umpWords[0] & 0xF0000000) >> 28;
@@ -179,6 +179,44 @@ static int platform_midi_convert_ump(unsigned char *out, unsigned int maxlen, co
     }
 
     return written;
+}
+
+static int platform_midi_convert_to_ump(unsigned int *out, unsigned int maxWords, unsigned char *data, unsigned int dataLen)
+{
+    unsigned int *ump = out;
+    unsigned int read = 0;
+
+    while (ump < out + maxWords && read < dataLen)
+    {
+        // Always 1
+        unsigned char group = 0;
+        // default 2: Channel Voice
+        unsigned char type = 2;
+        if (data[read] == 0xF7)
+        {
+            type = 3;
+        }
+        else if ((data[read] & 0xF0) == 0xF0)
+        {
+            type = 1;
+        }
+
+        *ump = ((type & 0xF) << 28) | ((group & 0xF) << 24);
+        int bits = 16;
+
+        while (read < dataLen)
+        {
+            *ump |= data[read++] << bits;
+
+            bits -= 8;
+            if (bits == 0)
+            {
+                ump++;
+            }
+        }
+    }
+
+    return ump - out;
 }
 
 static int platform_midi_packet_count(struct platform_midi_ringbuf *buf)
