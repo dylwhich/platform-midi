@@ -15,6 +15,8 @@ int platform_midi_write_winmm(struct platform_midi_driver *driver, const unsigne
 #include <BaseTsd.h>
 #include <mmeapi.h>
 
+#define PLATFORM_MIDI_WINMM_INPUTS 32
+
 struct platform_midi_winmm_driver
 {
     platform_midi_deinit_fn deinitFn;
@@ -26,7 +28,8 @@ struct platform_midi_winmm_driver
     struct platform_midi_ringbuf buffer;
 
     // Anywhere that accepts LPHMIDIIN just wants a pointer to this
-    HMIDIIN phmi;
+    int inCount;
+    HMIDIIN inputs[PLATFORM_MIDI_WINMM_INPUTS];
 };
 
 void CALLBACK platform_midi_winmm_callback(HMIDIIN midiIn, UINT wMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2)
@@ -107,11 +110,54 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
     winmm_driver->readFn = platform_midi_read_winmm;
     winmm_driver->writeFn = platform_midi_write_winmm;
     winmm_driver->data = data;
+    winmm_driver->inCount = 0;
+
+    char errorText[MAXERRORLENGTH];
 
     // Pass pointer to phmi, as this function sets it to a new handle
-    MMRESULT result = midiInOpen(&winmm_driver->phmi, 0, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)winmm_driver, CALLBACK_FUNCTION);
-    printf("midiInOpen() == %d\n", result);
-    printf("midiInStart() == %d\n", midiInStart(winmm_driver->phmi));
+    int inputCount = midiInGetNumDevs();
+    printf("Found %d MIDI Input devices\n", inputCount);
+
+    HMIDIIN inputs[inputCount];
+    MIDIINCAPS inDeviceCaps;
+
+    for (int i = 0; i < inputCount && winmm_driver->inCount < PLATFORM_MIDI_WINMM_INPUTS; i++)
+    {
+        MMRESULT result = midiInDevGetCaps(i, &MIDIINCAPS, sizeof(MIDIINCAPS));
+        if (0 != result)
+        {
+            printf("Warning: Unable to get capabilities for MIDI Input #%d\n", i);
+        }
+
+        if (MIDIINCAPS.szPname && *MIDIINCAPS.szPname)
+        {
+            printf("MIDI Input Device #%d: %s\n", i, MIDIINCAPS.szPname);
+        }
+
+        result = midiInOpen(&inputs[i], i, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)winmm_driver, CALLBACK_FUNCTION);
+        if (0 != result)
+        {
+            printf("ERR: midiInOpen() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errortext : "?");
+            continue;
+        }
+
+        result = midiInStart(inputs[i]);
+        if (0 != result)
+        {
+            printf("ERR: midiInStart() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errortext : "?");
+            midiInClose(inputs[i]);
+        }
+
+        winmm_driver->inputs[winmm_driver->inCount++] = inputs[i];
+    }
+
+    // midiInGetNumDevs()
+    // midiInGetDevCaps()
+    // midiInConnect()
+    // If we want to connect multiple outputs to our inputs, we may need to create an intermediary MIDI THRU port
+    // According to the midiInConnect() docs, a MIDI IN port can only connect to a single MIDI OUT port.
+    // But, a MIDI THRU port can connect to multiple MIDI IN ports, and outputs as a single MIDI OUT port.
+    // So... we just put that in between everything and us and we're good?
 
     return (struct platform_midi_driver*)winmm_driver;
 }
