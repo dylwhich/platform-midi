@@ -123,28 +123,28 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
 
     for (int i = 0; i < inputCount && winmm_driver->inCount < PLATFORM_MIDI_WINMM_INPUTS; i++)
     {
-        MMRESULT result = midiInDevGetCaps(i, &MIDIINCAPS, sizeof(MIDIINCAPS));
+        MMRESULT result = midiInGetDevCaps(i, &inDeviceCaps, sizeof(MIDIINCAPS));
         if (0 != result)
         {
             printf("Warning: Unable to get capabilities for MIDI Input #%d\n", i);
         }
 
-        if (MIDIINCAPS.szPname && *MIDIINCAPS.szPname)
+        if (inDeviceCaps.szPname && *inDeviceCaps.szPname)
         {
-            printf("MIDI Input Device #%d: %s\n", i, MIDIINCAPS.szPname);
+            printf("MIDI Input Device #%d: %s\n", i, inDeviceCaps.szPname);
         }
 
         result = midiInOpen(&inputs[i], i, (DWORD_PTR)platform_midi_winmm_callback, (DWORD_PTR)winmm_driver, CALLBACK_FUNCTION);
         if (0 != result)
         {
-            printf("ERR: midiInOpen() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errortext : "?");
+            printf("ERR: midiInOpen() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errorText : "?");
             continue;
         }
 
         result = midiInStart(inputs[i]);
         if (0 != result)
         {
-            printf("ERR: midiInStart() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errortext : "?");
+            printf("ERR: midiInStart() returned %d (%s)\n", result, (0 == midiInGetErrorText(result, errorText, sizeof(errorText))) ? errorText : "?");
             midiInClose(inputs[i]);
         }
 
