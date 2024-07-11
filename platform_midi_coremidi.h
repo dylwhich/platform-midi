@@ -40,8 +40,6 @@ struct platform_midi_coremidi_driver
 
 void platform_midi_receive_callback(const MIDIEventList* events, void* refcon, struct platform_midi_coremidi_driver* driver)
 {
-    printf("Recieved %u MIDI packets from CoreAudio\n", events->numPackets);
-
     for (unsigned int i = 0; i < events->numPackets; i++)
     {
         unsigned char data[16];
@@ -54,7 +52,7 @@ void platform_midi_notify_callback(const MIDINotification* message, void* refcon
 {
     struct platform_midi_coremidi_driver* driver = (struct platform_midi_coremidi_driver*)refcon;
 
-    switch (message->MessageID)
+    switch (message->messageID)
     {
         case kMIDIMsgSetupChanged:
         // Some aspect of the current MIDI setup changed.
@@ -67,7 +65,7 @@ void platform_midi_notify_callback(const MIDINotification* message, void* refcon
 
             if (addMessage->childType & kMIDIObjectType_Source)
             {
-                OSStatus result = MIDIPortConnectSource(driver->coremidi_in_port, ref, NULL);
+                OSStatus result = MIDIPortConnectSource(driver->coremidi_in_port, addMessage->child, NULL);
                 if (0 != result)
                 {
                     printf("Error connecting to newly found MIDI source\n");
@@ -157,7 +155,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
 
     result = MIDIInputPortCreateWithProtocol(
         driver->coremidi_client,
-        CSTR("input"),
+        CFSTR("input"),
         kMIDIProtocol_1_0,
         &driver->coremidi_in_port,
         receiveCbBlock
@@ -201,12 +199,13 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     }
 
     // And connect up all the outputs
-    int destCount = MIDIGetNumberOfDestinations();
+    // TODO I think we have to manually send to all the destinations
+    /*int destCount = MIDIGetNumberOfDestinations();
     for (int i = 0; i < destcount; i++)
     {
         MIDIEndpointRef ref = MIDIGetDestination(i);
         result = MIDIPortConnectDestination(driver->coremidi_out_port, ref, NULL);
-    }
+    }*/
 
     return (struct platform_midi_driver*)driver;
 
@@ -216,7 +215,7 @@ fail:
         if (driver->out_endpoint) MIDIEndpointDispose(driver->out_endpoint);
         if (driver->coremidi_out_port) MIDIPortDispose(driver->coremidi_out_port);
         if (driver->in_endpoint) MIDIEndpointDispose(driver->in_endpoint);
-        if (driver->coremidi_in_pot) MIDIPortDispose(driver->coremidi_in_port);
+        if (driver->coremidi_in_port) MIDIPortDispose(driver->coremidi_in_port);
         if (driver->coremidi_client) MIDIClientDispose(driver->coremidi_client);
 
         free(driver);
