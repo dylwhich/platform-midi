@@ -129,7 +129,7 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
             printf("Warning: Unable to get capabilities for MIDI Input #%d\n", i);
         }
 
-        if (inDeviceCaps.szPname && *inDeviceCaps.szPname)
+        if (*inDeviceCaps.szPname)
         {
             printf("MIDI Input Device #%d: %s\n", i, inDeviceCaps.szPname);
         }
