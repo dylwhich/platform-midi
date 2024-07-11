@@ -165,9 +165,21 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
 void platform_midi_deinit_winmm(struct platform_midi_driver *driver)
 {
     struct platform_midi_winmm_driver *winmm_driver = (struct platform_midi_winmm_driver*)driver;
-    printf("midiInStop() == %d\n", midiInStop(winmm_driver->phmi));
-    MMRESULT result = midiInClose(winmm_driver->phmi);
-    printf("platform_midi_deinit_winmm() result: %d\n", result);
+    for (int i = 0; i < winmm_driver->inCount; i++)
+    {
+        MMRESULT result = midiInStop(winmm_driver->inputs[i]);
+        if (0 != result)
+        {
+            printf("midiInStop(%d) == %d\n", i, result);
+        }
+
+        result = midiInClose(winmm_driver->inputs[i]);
+        if (0 != result)
+        {
+            printf("midiInStop(%d) == %d\n", i, result);
+        }
+    }
+
     free(winmm_driver);
 }
 
