@@ -246,6 +246,12 @@ void platform_midi_deinit_coremidi(struct platform_midi_driver *driver)
         printf("failed to destroy CoreMIDI in endpoint\n");
     }
 
+    result = MIDIPortDispose(coremidi_driver->in_port);
+    if (0 != result)
+    {
+        printf("failed to destroyCoreMIDI in port\n");
+    }
+
 
     result = MIDIClientDispose(coremidi_driver->coremidi_client);
     if (0 != result)
