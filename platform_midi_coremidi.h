@@ -38,9 +38,8 @@ struct platform_midi_coremidi_driver
     MIDIEndpointRef out_endpoint;
 };
 
-void platform_midi_receive_callback(const MIDIEventList* events, void* refcon)
+void platform_midi_receive_callback(const MIDIEventList* events, void* refcon, struct platform_midi_coremidi_driver* driver)
 {
-    struct platform_midi_coremidi_driver *driver = (struct platform_midi_coremidi_driver*)refcon;
     printf("Recieved %u MIDI packets from CoreAudio\n", events->numPackets);
 
     for (unsigned int i = 0; i < events->numPackets; i++)
@@ -48,6 +47,56 @@ void platform_midi_receive_callback(const MIDIEventList* events, void* refcon)
         unsigned char data[16];
         int written = platform_midi_convert_from_ump(data, sizeof(data), events->packet[i].words, events->packet[i].wordCount);
         platform_midi_push_packet(&driver->buffer, data, written);
+    }
+}
+
+void platform_midi_notify_callback(const MIDINotification* message, void* refcon)
+{
+    struct platform_midi_coremidi_driver* driver = (struct platform_midi_coremidi_driver*)refcon;
+
+    switch (message->MessageID)
+    {
+        case kMIDIMsgSetupChanged:
+        // Some aspect of the current MIDI setup changed.
+        break;
+
+        case kMIDIMsgObjectAdded:
+        {
+            // The system added a device, entity, or endpoint.
+            const MIDIObjectAddRemoveNotification* addMessage = (MIDIObjectAddRemoveNotification*)message;
+
+            if (addMessage->childType & kMIDIObjectType_Source)
+            {
+                OSStatus result = MIDIPortConnectSource(driver->coremidi_in_port, ref, NULL);
+                if (0 != result)
+                {
+                    printf("Error connecting to newly found MIDI source\n");
+                }
+            }
+
+            break;
+        }
+
+        case kMIDIMsgObjectRemoved:
+        // The system removed a device, entity, or endpoint.
+        // TODO: Do we need to manually disconnect from a removed source? Probably not
+        break;
+
+        case kMIDIMsgPropertyChanged:
+        // An object’s property value changed.
+        break;
+
+        case kMIDIMsgThruConnectionsChanged:
+        // The system created or disposed of a persistent MIDI Thru connection.
+        break;
+
+        case kMIDIMsgSerialPortOwnerChanged:
+        // The system changed a serial port owner.
+        break;
+
+        case kMIDIMsgIOError:
+        // A driver I/O error occurred.
+        break;
     }
 }
 
@@ -68,6 +117,11 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     driver->writeFn = platform_midi_write_coremidi;
     driver->data = data;
 
+    driver->in_endpoint = 0;
+    driver->out_endpoint = 0;
+    driver->coremidi_in_port = 0;
+    driver->coremidi_out_port = 0;
+
     /* name: The client name */
     /* notifyProc: an optional callback for system changes */
     /* notifyRefCon: a nullable refCon for notifyRefCon*/
@@ -78,14 +132,13 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     if (0 != result)
     {
         printf("Failed to initialize CoreMIDI driver\n");
-        free(alloc);
-        return 0;
+        goto fail;
     }
 
     platform_midi_buffer_init(&driver->buffer);
 
     void (^receiveCbBlock)(const MIDIEventList* events, void* refcon) = ^void(const MIDIEventList* events, void *refcon) {
-        platform_midi_receive_callback(events, refcon);
+        platform_midi_receive_callback(events, refcon, driver);
     };
 
     result = MIDIDestinationCreateWithProtocol(
@@ -99,11 +152,16 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     if (0 != result)
     {
         printf("Failed to create CoreMIDI input port\n");
-
-        MIDIClientDispose(driver->coremidi_client);
-        free(alloc);
-        return 0;
+        goto fail;
     }
+
+    result = MIDIInputPortCreateWithProtocol(
+        driver->coremidi_client,
+        CSTR("input"),
+        kMIDIProtocol_1_0,
+        &driver->coremidi_in_port,
+        receiveCbBlock
+    );
 
     result = MIDIOutputPortCreate(
         driver->coremidi_client,
@@ -114,11 +172,7 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     if (0 != result)
     {
         printf("Failed to create CoreMIDI output port\n");
-
-        MIDIEndpointDispose(driver->in_endpoint);
-        MIDIClientDispose(driver->coremidi_client);
-        free(alloc);
-        return 0;
+        goto fail;
     }
 
     result = MIDISourceCreateWithProtocol(
@@ -131,15 +185,44 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     if (0 != result)
     {
         printf("Failed to create CoreMIDI source\n");
+        goto fail;
+    }
 
-        MIDIPortDispose(driver->coremidi_out_port);
-        MIDIEndpointDispose(driver->in_endpoint);
-        MIDIClientDispose(driver->coremidi_client);
-        free(alloc);
-        return 0;
+    // Now, connect up all the sources to the input port
+    int sourceCount = MIDIGetNumberOfSources();
+    for (int i = 0; i < sourceCount; i++)
+    {
+        MIDIEndpointRef ref = MIDIGetSource(i);
+        result = MIDIPortConnectSource(driver->coremidi_in_port, ref, NULL);
+        if (0 != result)
+        {
+            printf("Failed to connect input port to MIDI source #%d\n", i);
+        }
+    }
+
+    // And connect up all the outputs
+    int destCount = MIDIGetNumberOfDestinations();
+    for (int i = 0; i < destcount; i++)
+    {
+        MIDIEndpointRef ref = MIDIGetDestination(i);
+        result = MIDIPortConnectDestination(driver->coremidi_out_port, ref, NULL);
     }
 
     return (struct platform_midi_driver*)driver;
+
+fail:
+    if (driver)
+    {
+        if (driver->out_endpoint) MIDIEndpointDispose(driver->out_endpoint);
+        if (driver->coremidi_out_port) MIDIPortDispose(driver->coremidi_out_port);
+        if (driver->in_endpoint) MIDIEndpointDispose(driver->in_endpoint);
+        if (driver->coremidi_in_pot) MIDIPortDispose(driver->coremidi_in_port);
+        if (driver->coremidi_client) MIDIClientDispose(driver->coremidi_client);
+
+        free(driver);
+    }
+
+    return NULL;
 }
 
 void platform_midi_deinit_coremidi(struct platform_midi_driver *driver)
