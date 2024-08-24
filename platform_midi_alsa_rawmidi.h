@@ -9,6 +9,8 @@ void platform_midi_deinit_alsa_rawmidi(struct platform_midi_driver *driver);
 int platform_midi_read_alsa_rawmidi(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_alsa_rawmidi(struct platform_midi_driver *driver);
 int platform_midi_write_alsa_rawmidi(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client_rawmidi(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port_rawmidi(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
 
@@ -18,7 +20,8 @@ struct platform_midi_alsa_rawmidi_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
-    platform_midi_list_dev_fn listDevicesFn;
+    platform_midi_next_client_fn nextClientFn;
+    platform_midi_next_port_fn nextPortFn;
     void *data;
 
     snd_rawmidi_t *raw_in_port;
@@ -101,6 +104,16 @@ int platform_midi_write_alsa_rawmidi(struct platform_midi_driver *driver, const 
     }
 
     return (int)result;
+}
+
+int platform_midi_next_client_rawmidi(struct platform_midi_driver *driver, struct platform_midi_client *client)
+{
+
+}
+
+int platform_midi_next_port_rawmidi(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port)
+{
+
 }
 #endif
 

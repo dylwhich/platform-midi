@@ -23,7 +23,8 @@ struct platform_midi_winmm_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
-    platform_midi_list_dev_fn listDevicesFn;
+    platform_midi_next_client_fn nextClientFn;
+    platform_midi_next_port_fn nextPortFn;
     void *data;
 
     struct platform_midi_ringbuf buffer;

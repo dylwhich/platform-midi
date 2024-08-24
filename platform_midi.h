@@ -7,21 +7,45 @@ struct platform_midi_driver;
 extern "C" {
 #endif
 
+// Bitfields for MIDI port capabilities.
+// SOURCE ports can be read from
+#define PLATFORM_MIDI_PORT_SOURCE (1 << 0)
+// DEST ports can be written to
+#define PLATFORM_MIDI_PORT_DEST   (1 << 1)
+// THRU ports function as a SOURCE port that mirrors its device's DEST port
+#define PLATFORM_MIDI_PORT_THRU   (1 << 2)
+
+struct platform_midi_client
+{
+    int id;
+    char name[128];
+    int port_count;
+};
+
+struct platform_midi_port
+{
+    int id;
+    char name[128];
+    int caps;
+};
+
 typedef struct platform_midi_driver* (*platform_midi_init_fn)(const char *, void*);
 typedef void  (*platform_midi_deinit_fn)(struct platform_midi_driver*);
 typedef int   (*platform_midi_read_fn)(struct platform_midi_driver*, unsigned char*, int);
 typedef int   (*platform_midi_write_fn)(struct platform_midi_driver*, const unsigned char*, int);
 typedef int   (*platform_midi_avail_fn)(struct platform_midi_driver*);
-typedef void   (*platform_midi_list_dev_fn)(struct platform_midi_driver*);
+typedef int   (*platform_midi_next_client_fn)(struct platform_midi_driver*, struct platform_midi_client*);
+typedef int   (*platform_midi_next_port_fn)(struct platform_midi_driver*, int clientId, struct platform_midi_port*);
 
 struct platform_midi_driver* platform_midi_init(const char *name);
 void platform_midi_deinit(struct platform_midi_driver *driver);
 int platform_midi_read(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail(struct platform_midi_driver *driver);
 int platform_midi_write(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port(struct platform_midi_driver *driver, int clientId, struct platform_midi_port *port);
 
-void platform_midi_print_devices(struct platform_midi_driver* driver);
-
+void platform_midi_print_devices(struct platform_midi_driver *driver);
 
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__LINUX__)
 #define PLATFORM_MIDI_ALSA_RAWMIDI 1
@@ -293,7 +317,8 @@ struct platform_midi_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
-    platform_midi_list_dev_fn listDevicesFn;
+    platform_midi_next_client_fn nextClientFn;
+    platform_midi_next_port_fn nextPortFn;
     void *data;
 };
 #endif
@@ -397,9 +422,19 @@ int platform_midi_write(struct platform_midi_driver* driver, const unsigned char
     return driver->writeFn(driver, buf, size);
 }
 
+int platform_midi_next_client(struct platform_midi_driver *driver, struct platform_midi_client *client)
+{
+    return driver->nextClientFn(driver, client);
+}
+
+int platform_midi_next_port(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port)
+{
+    return driver->nextPortFn(driver, client_id, port);
+}
+
 void platform_midi_print_devices(struct platform_midi_driver* driver)
 {
-    driver->listDevicesFn(driver);
+
 }
 
 #ifdef __cplusplus

@@ -10,6 +10,8 @@ void platform_midi_deinit_alsa(struct platform_midi_driver *driver);
 int platform_midi_read_alsa(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_alsa(struct platform_midi_driver *driver);
 int platform_midi_write_alsa(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client_alsa(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port_alsa(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port);
 void platform_midi_list_devices_alsa(struct platform_midi_driver *driver);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
@@ -20,7 +22,9 @@ struct platform_midi_alsa_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
-    platform_midi_list_dev_fn listDevicesFn;
+    platform_midi_next_client_fn nextClientFn;
+    platform_midi_next_port_fn nextPortFn;
+
     void *data;
 
     snd_seq_t *seq_handle;
@@ -78,7 +82,8 @@ struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *dat
     alsa_driver->availFn = platform_midi_avail_alsa;
     alsa_driver->readFn = platform_midi_read_alsa;
     alsa_driver->writeFn = platform_midi_write_alsa;
-    alsa_driver->listDevicesFn = platform_midi_list_devices_alsa;
+    alsa_driver->nextClientFn = platform_midi_next_client_alsa;
+    alsa_driver->nextPortFn = platform_midi_next_port_alsa;
     alsa_driver->data = data;
 
     alsa_driver->seq_handle = seq_handle;
@@ -157,6 +162,94 @@ int platform_midi_write_alsa(struct platform_midi_driver* driver, const unsigned
     return total;
 }
 
+int platform_midi_next_client_alsa(struct platform_midi_driver *driver, struct platform_midi_client *client)
+{
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+    char client_buf[snd_seq_client_info_sizeof()];
+    snd_seq_client_info_t* client_info = (snd_seq_client_info_t*)(client_buf);
+
+    if (client->id < 0)
+    {
+        // Specify first client
+        snd_seq_client_info_set_client(client_info, 0);
+    }
+    else
+    {
+        snd_seq_client_info_set_client(client_info, client->id);
+    }
+
+    int result = snd_seq_query_next_client(alsa_driver->seq_handle, client_info);
+
+    if (result == 0)
+    {
+        int client_id = snd_seq_client_info_get_client(client_info);
+        const char* client_name = snd_seq_client_info_get_name(client_info);
+        int port_count = snd_seq_client_info_get_num_ports(client_info);
+
+        client->id = client_id;
+        strncpy(client->name, client_name, sizeof(client->name));
+        client->port_count = port_count;
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
+int platform_midi_next_port_alsa(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port)
+{
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+    char port_buf[snd_seq_port_info_sizeof()];
+    snd_seq_port_info_t* port_info = (snd_seq_port_info_t*)(port_buf);
+
+    if (port->id < 0)
+    {
+        snd_seq_port_info_set_port(port_info, -1);
+    }
+    else
+    {
+        snd_seq_port_info_set_port(port_info, port->id);
+    }
+    snd_seq_port_info_set_client(port_info, client_id);
+
+    int result = snd_seq_query_next_port(alsa_driver->seq_handle, port_info);
+
+    if (0 == result)
+    {
+        int port_id = snd_seq_port_info_get_port(port_info);
+        const char* port_name = snd_seq_port_info_get_name(port_info);
+        int cap_bits = snd_seq_port_info_get_capability(port_info);
+
+        port->id = port_id;
+        strncpy(port->name, port_name, sizeof(port->name));
+
+        int port_caps = 0;
+        if (cap_bits & SND_SEQ_PORT_CAP_READ)
+        {
+            port_caps |= PLATFORM_MIDI_PORT_SOURCE;
+        }
+
+        if (cap_bits & SND_SEQ_PORT_CAP_WRITE)
+        {
+            port_caps |= PLATFORM_MIDI_PORT_DEST;
+        }
+
+        if (cap_bits & SND_SEQ_PORT_CAP_DUPLEX)
+        {
+            // TODO or maybe not?
+        }
+
+        port->caps = port_caps;
+
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+}
+
 void platform_midi_list_devices_alsa(struct platform_midi_driver *driver)
 {
     struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
@@ -165,7 +258,7 @@ void platform_midi_list_devices_alsa(struct platform_midi_driver *driver)
     snd_seq_port_info_t* port_info = (snd_seq_port_info_t*)(port_buf);
     snd_seq_client_info_t* client_info = (snd_seq_client_info_t*)(client_buf);
 
-    // Use -1 to specify the first client
+    // Use 0 to specify the first client
     snd_seq_client_info_set_client(client_info, 0);
 
     // Loop over all the clients
@@ -182,7 +275,25 @@ void platform_midi_list_devices_alsa(struct platform_midi_driver *driver)
         {
             int port_id = snd_seq_port_info_get_port(port_info);
             const char* port_name = snd_seq_port_info_get_name(port_info);
-            printf(" - %d:%d '%s'\n", client_id, port_id, port_name);
+            int cap_bits = snd_seq_port_info_get_capability(port_info);
+
+            char cap_str[4] = {'-', '-', '-', '\0'};
+            if (cap_bits & SND_SEQ_PORT_CAP_READ)
+            {
+                cap_str[0] = 'R';
+            }
+
+            if (cap_bits & SND_SEQ_PORT_CAP_WRITE)
+            {
+                cap_str[1] = 'W';
+            }
+
+            if (cap_bits & SND_SEQ_PORT_CAP_DUPLEX)
+            {
+                cap_str[2] = 'D';
+            }
+
+            printf(" - %d:%d [%s] '%s'\n", client_id, port_id, cap_str, port_name);
         }
         printf("\n");
     }
