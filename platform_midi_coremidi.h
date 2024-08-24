@@ -25,6 +25,7 @@ struct platform_midi_coremidi_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
+    platform_midi_list_dev_fn listDevicesFn;
     void *data;
 
     struct platform_midi_ringbuf buffer;

@@ -12,12 +12,16 @@ typedef void  (*platform_midi_deinit_fn)(struct platform_midi_driver*);
 typedef int   (*platform_midi_read_fn)(struct platform_midi_driver*, unsigned char*, int);
 typedef int   (*platform_midi_write_fn)(struct platform_midi_driver*, const unsigned char*, int);
 typedef int   (*platform_midi_avail_fn)(struct platform_midi_driver*);
+typedef void   (*platform_midi_list_dev_fn)(struct platform_midi_driver*);
 
 struct platform_midi_driver* platform_midi_init(const char *name);
 void platform_midi_deinit(struct platform_midi_driver *driver);
 int platform_midi_read(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail(struct platform_midi_driver *driver);
 int platform_midi_write(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+
+void platform_midi_print_devices(struct platform_midi_driver* driver);
+
 
 #if defined(__linux) || defined(__linux__) || defined(linux) || defined(__LINUX__)
 #define PLATFORM_MIDI_ALSA_RAWMIDI 1
@@ -289,6 +293,7 @@ struct platform_midi_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
+    platform_midi_list_dev_fn listDevicesFn;
     void *data;
 };
 #endif
@@ -390,6 +395,11 @@ int platform_midi_avail(struct platform_midi_driver* driver)
 int platform_midi_write(struct platform_midi_driver* driver, const unsigned char* buf, int size)
 {
     return driver->writeFn(driver, buf, size);
+}
+
+void platform_midi_print_devices(struct platform_midi_driver* driver)
+{
+    driver->listDevicesFn(driver);
 }
 
 #ifdef __cplusplus

@@ -10,6 +10,7 @@ void platform_midi_deinit_alsa(struct platform_midi_driver *driver);
 int platform_midi_read_alsa(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_alsa(struct platform_midi_driver *driver);
 int platform_midi_write_alsa(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+void platform_midi_list_devices_alsa(struct platform_midi_driver *driver);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
 
@@ -19,6 +20,7 @@ struct platform_midi_alsa_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
+    platform_midi_list_dev_fn listDevicesFn;
     void *data;
 
     snd_seq_t *seq_handle;
@@ -76,6 +78,7 @@ struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *dat
     alsa_driver->availFn = platform_midi_avail_alsa;
     alsa_driver->readFn = platform_midi_read_alsa;
     alsa_driver->writeFn = platform_midi_write_alsa;
+    alsa_driver->listDevicesFn = platform_midi_list_devices_alsa;
     alsa_driver->data = data;
 
     alsa_driver->seq_handle = seq_handle;
@@ -152,6 +155,33 @@ int platform_midi_write_alsa(struct platform_midi_driver* driver, const unsigned
     }
 
     return total;
+}
+
+void platform_midi_list_devices_alsa(struct platform_midi_driver *driver)
+{
+    struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+    char port_buf[snd_seq_port_info_sizeof()];
+    char client_buf[snd_seq_client_info_sizeof()];
+    snd_seq_port_info_t* port_info = (snd_seq_port_info_t*)(port_buf);
+    snd_seq_client_info_t* client_info = (snd_seq_client_info_t*)(client_buf);
+
+    // Use -1 to specify the first client
+    snd_seq_client_info_set_client(client_info, 0);
+
+    // Loop over all the clients
+    while (0 == snd_seq_query_next_client(alsa_driver->seq_handle, client_info))
+    {
+        int clientId = snd_seq_client_info_get_client(client_info);
+        printf("Client: %d\n", clientId);
+
+        // Use -1 to specify the first port on this client
+        snd_seq_port_info_set_port(port_info, -1);
+        snd_seq_port_info_set_client(port_info, clientId);
+        while (0 == snd_seq_query_next_port(alsa_driver->seq_handle, port_info))
+        {
+            printf("Port: %d\n", snd_seq_port_info_get_port(port_info));
+        }
+    }
 }
 #endif
 
