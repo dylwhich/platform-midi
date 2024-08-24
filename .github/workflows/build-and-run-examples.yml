@@ -33,6 +33,7 @@ jobs:
       run: |
         $env:path = $env:path.Insert($env:path.ToLower().IndexOf("c:\windows\system32"), "C:\msys64\mingw64\bin;C:\msys64\usr\bin;")
         make -j2 examples
+        ./examples/listdevs
         ./examples/loopback
 
   Build-OSX-arm:
@@ -50,6 +51,7 @@ jobs:
     - name: Compile Examples
       run: |
         make -j3 examples
+        ./examples/listdevs
         ./examples/loopback
 
   Build-OSX-intel:
@@ -67,6 +69,7 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
+        ./examples/listdevs
         ./examples/loopback
 
   Build-Linux:
@@ -88,4 +91,5 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
+        ./examples/listdevs
         ./examples/loopback
