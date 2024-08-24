@@ -27,7 +27,7 @@ jobs:
 
     - name: Install msys64 packages
       run: |
-        C:\msys64\usr\bin\bash -lc 'pacman --noconfirm -S base-devel gcc gdb zip'
+        C:\msys64\usr\bin\bash -lc 'pacman --noconfirm -S base-devel gcc'
 
     - name: Compile Examples
       run: |
