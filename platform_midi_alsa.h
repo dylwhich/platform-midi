@@ -47,7 +47,7 @@ struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *dat
         return 0;
     }
 
-    printf("Sequncer initialized\n");
+    printf("Sequencer initialized\n");
 
     if (0 != snd_seq_set_client_name(seq_handle, name))
     {
