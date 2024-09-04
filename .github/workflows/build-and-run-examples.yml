@@ -51,7 +51,6 @@ jobs:
     - name: Compile Examples
       run: |
         make -j3 examples
-        sudo modprobe snd_seq
         ./examples/listdevs
         ./examples/loopback
 
@@ -92,5 +91,6 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
+        sudo modprobe snd_seq
         ./examples/listdevs
         ./examples/loopback
