@@ -6,6 +6,8 @@ void platform_midi_deinit_coremidi(struct platform_midi_driver *driver);
 int platform_midi_read_coremidi(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_coremidi(struct platform_midi_driver *driver);
 int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client_coremidi(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port);
 
 #define PLATFORM_MIDI_IMPLEMENTATION
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
@@ -115,6 +117,8 @@ struct platform_midi_driver *platform_midi_init_coremidi(const char* name, void 
     driver->availFn = platform_midi_avail_coremidi;
     driver->readFn = platform_midi_read_coremidi;
     driver->writeFn = platform_midi_write_coremidi;
+    driver->nextClientFn = platform_midi_next_client_coremidi;
+    driver->nextPortFn = platform_midi_next_port_coremidi;
     driver->data = data;
 
     driver->in_endpoint = 0;
@@ -287,6 +291,8 @@ int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsi
     MIDIEventPacket *packet = MIDIEventListInit(&list, kMIDIProtocol_1_0);
     packet->wordCount = platform_midi_convert_to_ump(packet->words, 64, buf, size);
 
+    // TODO: where does the MIDIEndpointRef (dest) come from???
+    // I guess we need to find it by name
     OSStatus result = MIDISendEventList(coremidi_driver->coremidi_out_port, coremidi_driver->out_endpoint, &list);
 
     if (0 != result)
@@ -295,6 +301,134 @@ int platform_midi_write_coremidi(struct platform_midi_driver *driver, const unsi
     }
 
     return size;
+}
+
+int platform_midi_next_client_coremidi(struct platform_midi_driver *driver, struct platform_midi_client *client)
+{
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
+
+    ItemCount sourceCount = MIDIGetNumberOfDevices();
+
+    if (client->id < 0)
+    {
+        // Start at first client
+        client->id = 0;
+    }
+    else
+    {
+        // Increment client ID to find next one
+        client->id++;
+    }
+
+    if (client->id >= sourceCount)
+    {
+        // Beyond the last source, continue
+        return -1;
+    }
+
+    MIDIDeviceRef ref = MIDIGetDevice(client->id);
+    if (NULL != ref)
+    {
+        strncpy(client->name, ref->kMIDIPropertyName, sizeof(client->name));
+        client->port_count = 0;
+        return 0;
+    }
+    else
+    {
+        return -1;
+    }
+
+    // TODO: Maybe move entity from next_port() to here instead
+    // AKA, treat each entity as a separate device rather than combining all entities' ports into one device
+}
+
+int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port)
+{
+    struct platform_midi_coremidi_driver *coremidi_driver = (struct platform_midi_coremidi_driver*)driver;
+
+    MIDIDeviceRef deviceRef = MIDIGetDevice(client_id);
+
+    if (NULL != deviceRef)
+    {
+        ItemCount entityCount = MIDIDeviceGetNumberOfEntities(deviceRef);
+
+        int devEntity = 0;
+        int entityPort = 0;
+
+        if (port->id < 0)
+        {
+            port->id = 0;
+            devEntity = 0;
+            entityPort = 0;
+        }
+        else
+        {
+            devEntity = (port->id >> 8) & 0xFF;
+            entityPort = (port->id) & 0xFF;
+            entityPort++;
+        }
+
+        do {
+            if (devEntity >= entityCount)
+            {
+                return -1;
+            }
+
+            MIDIEntityRef entity = MIDIDeviceGetEntity(deviceRef);
+
+            if (NULL != entity)
+            {
+                ItemCount sourceCount = MIDIEntityGetNumberOfSources(entity);
+                ItemCount destCount = MIDIEntityGetNumberOfDestinations(entity);
+                if (entityPort >= sourceCount + destCount)
+                {
+                    // Reached the last port in this entity, so try to go to the next
+                    devEntity++;
+                    entityPort = 0;
+                    continue;
+                }
+
+                if (entityPort >= sourceCount)
+                {
+                    // It's a dest which we place after sources, so subtract the number of sources to get the dest ID
+                    int destNum = entityPort - sourceCount;
+                    MIDIEndpointRef dest = MIDIEntityGetSource(entity, destNum);
+
+                    if (NULL != dest)
+                    {
+                        strncpy(port->name, dest->kMIDIPropertyName, sizeof(port->name));
+                        port->caps = PLATFORM_MIDI_PORT_DEST;
+
+                        // TODO: This might not be necessary?
+                        MIDIEndpointDispose(dest);
+                        return 0;
+                    }
+                }
+                else
+                {
+                    // It's a source, so the source number is the true port number
+                    int sourceNum = entityPort;
+                    MIDIEndpointRef source = MIDIEntityGetSource(entity, sourceNum);
+
+                    if (NULL != source)
+                    {
+                        strncpy(port->name, source->kMIDIPropertyName, sizeof(port->name));
+                        port->caps = PLATFORM_MIDI_PORT_SOURCE;
+
+                        // TODO: This might not be necessary?
+                        MIDIEndpointDispose(source);
+                        return 0;
+                    }
+                }
+
+                // Don't need to dispose of the entity
+            }
+
+            break;
+        } while (true);
+    }
+
+    return -1;
 }
 
 #endif
