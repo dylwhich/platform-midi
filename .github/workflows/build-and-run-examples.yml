@@ -33,7 +33,9 @@ jobs:
       run: |
         $env:path = $env:path.Insert($env:path.ToLower().IndexOf("c:\windows\system32"), "C:\msys64\mingw64\bin;C:\msys64\usr\bin;")
         make -j2 examples
+        echo "Listing Devices..."
         ./examples/listdevs
+        echo "Loopback..."
         ./examples/loopback
 
   Build-OSX-arm:
