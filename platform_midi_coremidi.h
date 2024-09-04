@@ -400,7 +400,7 @@ int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int cl
                 return -1;
             }
 
-            MIDIEntityRef entity = MIDIDeviceGetEntity(deviceRef);
+            MIDIEntityRef entity = MIDIDeviceGetEntity(deviceRef, devEntity);
 
             if (NULL != entity)
             {
@@ -445,7 +445,7 @@ int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int cl
                     if (NULL != source)
                     {
                         CFStringRef sourceName;
-                        OSStatus result = MIDIObjectGetStringProperty(dest, kMIDIPropertyName, &sourceName);
+                        OSStatus result = MIDIObjectGetStringProperty(source, kMIDIPropertyName, &sourceName);
                         if (0 == result)
                         {
                             platform_midi_convert_cfstr(port->name, sizeof(port->name), sourceName);
