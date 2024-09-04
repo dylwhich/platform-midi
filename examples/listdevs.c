@@ -6,7 +6,7 @@
 /*
  * listdevs.c
  *
- * Lists all known MIDI devices and their capabilities exits
+ * Lists all known MIDI devices and their capabilities, then exits
  *
  */
 

@@ -245,6 +245,8 @@ int platform_midi_next_client_winmm(struct platform_midi_driver *driver, struct 
         }
 
         strncpy(client->name, caps.szPname, sizeof(client->name));
+        client->port_count = 1;
+        return 0;
     }
     else
     {
@@ -259,6 +261,7 @@ int platform_midi_next_client_winmm(struct platform_midi_driver *driver, struct 
         }
 
         strncpy(client->name, caps.szPname, sizeof(client->name));
+        client->port_count = 1;
         return 0;
     }
 }
@@ -292,10 +295,12 @@ int platform_midi_next_port_winmm(struct platform_midi_driver *driver, int clien
     if (clientId >= numOutDevs)
     {
         strncpy(port->name, "out", sizeof(port->name));
+        port->caps = PLATFORM_MIDI_PORT_DEST;
     }
     else
     {
         strncpy(port->name, "in", sizeof(port->name));
+        port->caps = PLATFORM_MIDI_PORT_SOURCE;
     }
 
     return 0;
