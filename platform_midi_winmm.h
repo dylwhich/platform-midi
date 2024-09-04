@@ -6,6 +6,8 @@ void platform_midi_deinit_winmm(struct platform_midi_driver *driver);
 int platform_midi_read_winmm(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_winmm(struct platform_midi_driver *driver);
 int platform_midi_write_winmm(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client_winmm(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port_winmm(struct platform_midi_driver *driver, int clientId, struct platform_midi_port *port);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
 
