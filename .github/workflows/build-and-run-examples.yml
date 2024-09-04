@@ -91,6 +91,6 @@ jobs:
     - name: Compile Examples
       run: |
         make -j4 examples
-        sudo modprobe snd_seq
+        sudo modprobe snd-dummy
         ./examples/listdevs
         ./examples/loopback
