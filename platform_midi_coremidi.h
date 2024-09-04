@@ -42,6 +42,25 @@ struct platform_midi_coremidi_driver
     MIDIEndpointRef out_endpoint;
 };
 
+static int platform_midi_convert_cfstr(char* out, size_t n, CFStringRef cfstr)
+{
+    char* val = CFStringGetCStringPtr(cfstr, kCFStringEncodingUTF8);
+    if (NULL == val)
+    {
+        if (CFStringGetCString(cfstr, out, n, kCFStringEncodingUTF8))
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+    else
+    {
+        strncpy(out, val, n);
+        return 1;
+    }
+}
+
 void platform_midi_receive_callback(const MIDIEventList* events, void* refcon, struct platform_midi_coremidi_driver* driver)
 {
     for (unsigned int i = 0; i < events->numPackets; i++)
@@ -329,8 +348,15 @@ int platform_midi_next_client_coremidi(struct platform_midi_driver *driver, stru
     MIDIDeviceRef ref = MIDIGetDevice(client->id);
     if (NULL != ref)
     {
-        strncpy(client->name, ref->kMIDIPropertyName, sizeof(client->name));
-        client->port_count = 0;
+        CFStringRef devName;
+        OSStatus result = MIDIObjectGetStringProperty(ref, kMIDIPropertyName, &devName);
+        if (0 == result)
+        {
+            platform_midi_convert_cfstr(client->name, sizeof(client->name), devName);
+
+        }
+
+        client->port_count = 1;
         return 0;
     }
     else
@@ -396,7 +422,13 @@ int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int cl
 
                     if (NULL != dest)
                     {
-                        strncpy(port->name, dest->kMIDIPropertyName, sizeof(port->name));
+                        CFStringRef destName;
+                        OSStatus result = MIDIObjectGetStringProperty(dest, kMIDIPropertyName, &destName);
+                        if (0 == result)
+                        {
+                            platform_midi_convert_cfstr(port->name, sizeof(port->name), destName);
+
+                        }
                         port->caps = PLATFORM_MIDI_PORT_DEST;
 
                         // TODO: This might not be necessary?
@@ -412,7 +444,13 @@ int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int cl
 
                     if (NULL != source)
                     {
-                        strncpy(port->name, source->kMIDIPropertyName, sizeof(port->name));
+                        CFStringRef sourceName;
+                        OSStatus result = MIDIObjectGetStringProperty(dest, kMIDIPropertyName, &destName);
+                        if (0 == result)
+                        {
+                            platform_midi_convert_cfstr(port->name, sizeof(port->name), sourceName);
+
+                        }
                         port->caps = PLATFORM_MIDI_PORT_SOURCE;
 
                         // TODO: This might not be necessary?
