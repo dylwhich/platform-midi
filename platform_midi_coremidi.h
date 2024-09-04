@@ -445,7 +445,7 @@ int platform_midi_next_port_coremidi(struct platform_midi_driver *driver, int cl
                     if (NULL != source)
                     {
                         CFStringRef sourceName;
-                        OSStatus result = MIDIObjectGetStringProperty(dest, kMIDIPropertyName, &destName);
+                        OSStatus result = MIDIObjectGetStringProperty(dest, kMIDIPropertyName, &sourceName);
                         if (0 == result)
                         {
                             platform_midi_convert_cfstr(port->name, sizeof(port->name), sourceName);
