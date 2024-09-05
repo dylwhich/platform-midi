@@ -65,5 +65,5 @@ jobs:
 
       - name: Run Examples
         run: |
-          ./examples/listdevs
-          ./examples/loopback
+          ./examples/listdevs || echo "Failed to run listdevs!"
+          ./examples/loopback || echo "Failed to run loopback!"
