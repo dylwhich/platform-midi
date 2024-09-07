@@ -108,12 +108,12 @@ int platform_midi_write_alsa_rawmidi(struct platform_midi_driver *driver, const 
 
 int platform_midi_next_client_rawmidi(struct platform_midi_driver *driver, struct platform_midi_client *client)
 {
-
+    return 0;
 }
 
 int platform_midi_next_port_rawmidi(struct platform_midi_driver *driver, int client_id, struct platform_midi_port *port)
 {
-
+    return 0;
 }
 #endif
 

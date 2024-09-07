@@ -187,7 +187,8 @@ int platform_midi_next_client_alsa(struct platform_midi_driver *driver, struct p
         int port_count = snd_seq_client_info_get_num_ports(client_info);
 
         client->id = client_id;
-        strncpy(client->name, client_name, sizeof(client->name));
+        strncpy(client->name, client_name, sizeof(client->name) - 1);
+        client->name[sizeof(client->name) - 1] = '\0';
         client->port_count = port_count;
         return 0;
     }
@@ -222,7 +223,8 @@ int platform_midi_next_port_alsa(struct platform_midi_driver *driver, int client
         int cap_bits = snd_seq_port_info_get_capability(port_info);
 
         port->id = port_id;
-        strncpy(port->name, port_name, sizeof(port->name));
+        strncpy(port->name, port_name, sizeof(port->name) - 1);
+        port->name[sizeof(port->name) - 1] = '\0';
 
         int port_caps = 0;
         if (cap_bits & SND_SEQ_PORT_CAP_READ)
