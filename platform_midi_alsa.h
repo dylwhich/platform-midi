@@ -25,6 +25,11 @@ struct platform_midi_alsa_driver
     snd_midi_event_t *event_parser;
     int in_port;
     int out_port;
+    unsigned char* sysexBuf;
+    int sysexBuflen;
+    int sysexWriteOff;
+    int sysexReadOff;
+    int sysexPending;
 };
 
 struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *data)
@@ -82,6 +87,10 @@ struct platform_midi_driver *platform_midi_init_alsa(const char* name, void *dat
     alsa_driver->event_parser = event_parser;
     alsa_driver->in_port = in_port;
     alsa_driver->out_port = out_port;
+    alsa_driver->sysexBuf = NULL;
+    alsa_driver->sysexBuflen = 0;
+    alsa_driver->sysexWriteOff = 0;
+    alsa_driver->sysexPending = 0;
 
     printf("Done initializing MIDI!\n");
     return (struct platform_midi_driver*)alsa_driver;
@@ -94,6 +103,13 @@ void platform_midi_deinit_alsa(struct platform_midi_driver* driver)
     snd_midi_event_free(alsa_driver->event_parser);
     snd_seq_delete_port(alsa_driver->seq_handle, alsa_driver->in_port);
     snd_seq_close(alsa_driver->seq_handle);
+    if (alsa_driver->sysexBuf)
+    {
+        alsa_driver->sysexBuflen = 0;
+        alsa_driver->sysexWriteOff = 0;
+        free(alsa_driver->sysexBuf);
+        alsa_driver->sysexBuf = NULL;
+    }
     free(alsa_driver);
 }
 
@@ -102,27 +118,116 @@ int platform_midi_read_alsa(struct platform_midi_driver* driver, unsigned char *
     struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
     snd_seq_event_t *ev = NULL;
 
-    int result = snd_seq_event_input(alsa_driver->seq_handle, &ev);
-    if (result == -EAGAIN)
+    if (alsa_driver->sysexPending)
     {
-        return 0;
-    }
-
-    long convertResult = snd_midi_event_decode(alsa_driver->event_parser, out, size, ev);
-    if (convertResult < 0)
-    {
-        printf("Err: couldn't convert ALSA event to MIDI: %ld\n", convertResult);
-        return -1;
+        if (alsa_driver->sysexWriteOff - alsa_driver->sysexReadOff <= size)
+        {
+            // write the whole thing out and then we're done!
+            memcpy(out, alsa_driver->sysexBuf + alsa_driver->sysexReadOff, alsa_driver->sysexWriteOff - alsa_driver->sysexReadOff);
+            alsa_driver->sysexPending = 0;
+            return alsa_driver->sysexWriteOff - alsa_driver->sysexReadOff;
+        }
+        else
+        {
+            // Partial write, fill the whole buffer
+            memcpy(out, alsa_driver->sysexBuf + alsa_driver->sysexReadOff, size);
+            alsa_driver->sysexReadOff += size;
+            return size;
+        }
     }
     else
     {
-        return convertResult;
+        int result = snd_seq_event_input(alsa_driver->seq_handle, &ev);
+        if (result == -EAGAIN)
+        {
+            return 0;
+        }
+
+        if (ev->type == SND_SEQ_EVENT_SYSEX && ev->data.ext.len > size)
+        {
+            // We have a SysEx event, which may not fit in the buffer!
+            // (otherwise max is 12 and we assume the caller knows that...)
+            if (!alsa_driver->sysexBuf)
+            {
+                unsigned int v = ev->data.ext.len;
+                v--;
+                v |= v >> 1;
+                v |= v >> 2;
+                v |= v >> 4;
+                v |= v >> 8;
+                v |= v >> 16;
+                v++;
+
+                alsa_driver->sysexBuf = malloc(v);
+                alsa_driver->sysexBuflen = v;
+            }
+            else if (alsa_driver->sysexWriteOff + ev->data.ext.len > alsa_driver->sysexBuflen)
+            {
+                unsigned int v = ev->data.ext.len + alsa_driver->sysexWriteOff;
+                v--;
+                v |= v >> 1;
+                v |= v >> 2;
+                v |= v >> 4;
+                v |= v >> 8;
+                v |= v >> 16;
+                v++;
+                alsa_driver->sysexBuf = realloc(alsa_driver->sysexBuf, v);
+                alsa_driver->sysexBuflen = v;
+            }
+
+            // Should be room in the buffer now!
+            alsa_driver->sysexWriteOff = 0;
+            alsa_driver->sysexReadOff = 0;
+            long convertResult = snd_midi_event_decode(alsa_driver->event_parser, alsa_driver->sysexBuf, alsa_driver->sysexBuflen, ev);
+            if (convertResult < 0)
+            {
+                if (convertResult == -ENOMEM)
+                {
+                    printf("Err: event doesn't fit in %d bytes (ev.data.ext.len == %u\n", alsa_driver->sysexBuflen, ev->data.ext.len);
+                }
+                else if (convertResult == -ENOENT)
+                {
+                    printf("Err: noent???\n");
+                }
+                printf("Error: couldn't convert ALSA SysEx event to MIDI: %ld\n", convertResult);
+                return -1;
+            }
+
+            alsa_driver->sysexPending = 1;
+            alsa_driver->sysexWriteOff += convertResult;
+
+            memcpy(out, alsa_driver->sysexBuf, size);
+            alsa_driver->sysexReadOff += size;
+            return size;
+        }
+        else if (ev->type == SND_SEQ_EVENT_PORT_SUBSCRIBED || ev->type == SND_SEQ_EVENT_PORT_UNSUBSCRIBED)
+        {
+            // Ignore, and we can't convert it to a MIDI event
+            return 0;
+        }
+        else
+        {
+            long convertResult = snd_midi_event_decode(alsa_driver->event_parser, out, size, ev);
+            if (convertResult < 0)
+            {
+                printf("Err: couldn't convert ALSA event to MIDI: %ld, type=%d\n", convertResult, (int)ev->type);
+                return -1;
+            }
+            else
+            {
+                return convertResult;
+            }
+        }
     }
 }
 
 int platform_midi_avail_alsa(struct platform_midi_driver* driver)
 {
     struct platform_midi_alsa_driver *alsa_driver = (struct platform_midi_alsa_driver*)driver;
+    if (alsa_driver->sysexPending)
+    {
+
+    }
     return snd_seq_event_input_pending(alsa_driver->seq_handle, 1);
 }
 
