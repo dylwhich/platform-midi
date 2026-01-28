@@ -6,6 +6,8 @@ void platform_midi_deinit_winmm(struct platform_midi_driver *driver);
 int platform_midi_read_winmm(struct platform_midi_driver *driver, unsigned char *out, int size);
 int platform_midi_avail_winmm(struct platform_midi_driver *driver);
 int platform_midi_write_winmm(struct platform_midi_driver *driver, const unsigned char *buf, int size);
+int platform_midi_next_client_winmm(struct platform_midi_driver *driver, struct platform_midi_client *client);
+int platform_midi_next_port_winmm(struct platform_midi_driver *driver, int clientId, struct platform_midi_port *port);
 
 #ifdef PLATFORM_MIDI_IMPLEMENTATION
 
@@ -23,6 +25,8 @@ struct platform_midi_winmm_driver
     platform_midi_avail_fn availFn;
     platform_midi_read_fn readFn;
     platform_midi_write_fn writeFn;
+    platform_midi_next_client_fn nextClientFn;
+    platform_midi_next_port_fn nextPortFn;
     void *data;
 
     struct platform_midi_ringbuf buffer;
@@ -109,6 +113,8 @@ struct platform_midi_driver *platform_midi_init_winmm(const char* name, void *da
     winmm_driver->availFn = platform_midi_avail_winmm;
     winmm_driver->readFn = platform_midi_read_winmm;
     winmm_driver->writeFn = platform_midi_write_winmm;
+    winmm_driver->nextClientFn = platform_midi_next_client_winmm;
+    winmm_driver->nextPortFn = platform_midi_next_port_winmm;
     winmm_driver->data = data;
     winmm_driver->inCount = 0;
 
@@ -199,6 +205,104 @@ int platform_midi_write_winmm(struct platform_midi_driver *driver, const unsigne
 {
     struct platform_midi_winmm_driver *winmm_driver = (struct platform_midi_winmm_driver*)driver;
     printf("platform_midi_write_winmm() not implemented\n");
+    return 0;
+}
+
+int platform_midi_next_client_winmm(struct platform_midi_driver *driver, struct platform_midi_client *client)
+{
+    struct platform_midi_winmm_driver *winmm_driver = (struct platform_midi_winmm_driver*)driver;
+
+    UINT numOutDevs = midiOutGetNumDevs();
+    UINT numInDevs = midiInGetNumDevs();
+
+    if (client->id < 0)
+    {
+        // Start at first device
+        client->id = 0;
+    }
+    else
+    {
+        client->id++;
+    }
+
+    if (client->id >= numOutDevs + numInDevs)
+    {
+        return -1;
+    }
+
+    if (client->id >= numOutDevs)
+    {
+        // Past the out devices, now an in device
+        int inIndex = client->id - numOutDevs;
+
+        MIDIINCAPS caps;
+        MMRESULT result = midiInGetDevCaps(inIndex, &caps, sizeof(caps));
+        if (0 != result)
+        {
+            // Error
+            printf("Error getting IN device %d caps\n", inIndex);
+            return -1;
+        }
+
+        strncpy(client->name, caps.szPname, sizeof(client->name));
+        client->port_count = 1;
+        return 0;
+    }
+    else
+    {
+        // Out device
+        MIDIOUTCAPS caps;
+        MMRESULT result = midiOutGetDevCaps(client->id, &caps, sizeof(caps));
+        if (0 != result)
+        {
+            // Error
+            printf("Error getting OUT device %d caps\n", client->id);
+            return -1;
+        }
+
+        strncpy(client->name, caps.szPname, sizeof(client->name));
+        client->port_count = 1;
+        return 0;
+    }
+}
+
+int platform_midi_next_port_winmm(struct platform_midi_driver *driver, int clientId, struct platform_midi_port *port)
+{
+    struct platform_midi_winmm_driver *winmm_driver = (struct platform_midi_winmm_driver*)driver;
+    UINT numOutDevs = midiOutGetNumDevs();
+    UINT numInDevs = midiInGetNumDevs();
+
+    if (clientId > numOutDevs + numInDevs)
+    {
+        return -1;
+    }
+
+    if (port->id < 0)
+    {
+        port->id = 0;
+    }
+    else
+    {
+        port->id++;
+    }
+
+    if (port->id > 0)
+    {
+        // Only one port per "device" (which is actually a port already)
+        return -1;
+    }
+
+    if (clientId >= numOutDevs)
+    {
+        strncpy(port->name, "out", sizeof(port->name));
+        port->caps = PLATFORM_MIDI_PORT_DEST;
+    }
+    else
+    {
+        strncpy(port->name, "in", sizeof(port->name));
+        port->caps = PLATFORM_MIDI_PORT_SOURCE;
+    }
+
     return 0;
 }
 
